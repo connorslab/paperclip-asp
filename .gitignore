@@ -1,0 +1,8 @@
+/target/
+/result*
+/.direnv/
+/.state/
+/test/
+*.log
+.env
+*.cookie

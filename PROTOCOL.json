@@ -1,0 +1,9 @@
+{
+  "profile": "paperclip-xbt-regtest-v1",
+  "source_commit": "e107d09e7fd173fc5895a2b9eec500082f48d4cd",
+  "network": "regtest",
+  "unified_sighash": true,
+  "mempooltruc": "enforce",
+  "subdustfeepenalty": 0,
+  "default_policy_full_lifecycle": false
+}
