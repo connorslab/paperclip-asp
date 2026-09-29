@@ -1,7 +1,7 @@
 # Funded recovery profile 1
 
-This is a private regtest implementation for ordinary public-key balances.
-Keep the regtest guard enabled. Do not use real funds.
+This is a private experimental implementation for ordinary public-key balances.
+Regtest is the default. Mainnet opt-in and its prerequisites are in MAINNET.md.
 
 The wallet requires `ArkInfo.exit_profile = 1`. A board request includes the
 same marker. Transfer requests include explicit recovery reserves. The wallet
@@ -65,7 +65,7 @@ and default relay rules. The test runner does not set `mempooltruc=enforce` or
 new positions when reported relay, mempool, or dust fees exceed the tested
 envelope. Recovery of existing positions remains available separately.
 
-Unified ALL signatures remain mandatory. This profile does not enable mainnet.
+Unified ALL signatures remain mandatory. Mainnet requires a separate explicit opt-in; see MAINNET.md.
 Lightning HTLCs and server liquidity-pool allocation are outside this profile;
 the server rejects configurations with a CLN backend. Use an empty VTXO pool
 for these tests. A separate review and test program is required for those paths.

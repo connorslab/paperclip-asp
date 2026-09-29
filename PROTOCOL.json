@@ -1,10 +1,11 @@
 {
   "profile": "paperclip-xbt-regtest-funded-v1",
   "source_commit": "e107d09e7fd173fc5895a2b9eec500082f48d4cd",
-  "network": "regtest",
+  "network": "regtest by default; XBT mainnet with PAPERCLIP_XBT_MAINNET=1",
   "unified_sighash": true,
   "mempooltruc": "accept",
   "subdustfeepenalty": "default",
   "default_policy_full_lifecycle": true,
-  "exit_profile": 1
+  "exit_profile": 1,
+  "mainnet_transaction_validated": false
 }

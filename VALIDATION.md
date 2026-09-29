@@ -3,6 +3,23 @@
 Private regtest profile 1 for ordinary public-key balances. No production service
 or real funds were used. The old interactive lab remains separate.
 
+## Mainnet startup attempt
+
+On Flynn, the new explicit opt-in unit test passed. Without the opt-in the real
+wallet binary refused mainnet. With the opt-in it reached the existing backend
+and refused startup with `txindex is not enabled`. The portable Nix environment
+could not resolve `.local`, so the test used the address resolved by Flynn's host
+resolver for the same Umbrel backend; CLN configuration was not changed.
+
+No funding or transaction broadcast was performed. Spend: **0 sats** of the
+authorized 100,000-sat aggregate cap. No mainnet transaction ID exists. Wallet
+and ASP mainnet paths additionally require synchronized indexing and a backend
+out of IBD. Existing unified-signature and funded-exit rules remain unchanged.
+
+The backend currently reports an empty index list. Enable and synchronize its
+transaction index before retrying. No Umbrel restart, new IBD, production service
+change, or CLN channel operation was performed by this attempt.
+
 ## Verified checks
 
 - Wallet CLI, wallet daemon and ASP compile with the locked dependencies.
@@ -75,6 +92,6 @@ expire; a seed alone is not a complete recovery backup. Finite fees cannot
 guarantee confirmation during arbitrary congestion or censorship. New admission
 fails closed outside the supported policy envelope. Legacy signed VTXOs need
 cooperative refresh to obtain funded recovery paths. HTLCs, server liquidity-pool
-issuance, mainnet, and comprehensive adversarial/reorg testing are outside this
+issuance, completed mainnet transaction validation, and comprehensive adversarial/reorg testing are outside this
 profile. The earlier interactive lab's API and UI tests are historical checks,
 not a new browser test of this revision. See FUNDED-EXITS.md for accounting.

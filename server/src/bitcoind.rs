@@ -249,9 +249,18 @@ pub async fn test_mempool_accept(
 // --- Startup checks ------------------------------------------------------
 
 pub async fn require_network(client: &Client, expected: Network) -> anyhow::Result<()> {
-	anyhow::ensure!(expected == Network::Regtest, "experimental XBT port is regtest-only");
+	anyhow::ensure!(bitcoin_ext::paperclip_network::enabled(expected),
+			"XBT mainnet requires explicit PAPERCLIP_XBT_MAINNET=1; only regtest is enabled by default");
 	let network = client.network().await
 		.context("failed to query network from bitcoind")?;
+	if expected == Network::Bitcoin {
+		let indexes: serde_json::Value = client.call_raw("getindexinfo", &[]).await?;
+		anyhow::ensure!(indexes["txindex"]["synced"].as_bool() == Some(true),
+			"XBT mainnet requires an enabled, synchronized transaction index");
+		let chain: serde_json::Value = client.call_raw("getblockchaininfo", &[]).await?;
+		anyhow::ensure!(chain["initialblockdownload"].as_bool() == Some(false),
+			"XBT mainnet backend must finish synchronization before use");
+	}
 	let hash: BlockHash = client.call_raw("getbestblockhash", &[]).await?;
 	let raw: String = client.call_raw("getblockheader", &[json_arg(hash)?, false.into()]).await?;
 	anyhow::ensure!(raw.len() == 328, "XBT backend must be activated before starting Bark");

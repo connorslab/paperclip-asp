@@ -1,10 +1,11 @@
 # Paperclip ASP
 
-Private XBT regtest Ark Service Provider based on Bark by Second and the Bark
+Private experimental XBT Ark Service Provider based on Bark by Second and the Bark
 contributors. This repository contains the server and its shared dependencies.
 The wallet and web interface are in `connorslab/paperclip-wallet`.
 
-**Experimental. Regtest only. No real funds or production deployment.**
+**Experimental. Regtest by default; mainnet requires explicit opt-in.** See
+`MAINNET.md`. Mainnet transaction validation is not yet complete.
 
 ## Build
 
@@ -15,7 +16,7 @@ nix develop --command bash scripts/build.sh
 
 Use the private test setup with the matching wallet revision. The application
 uses funded recovery profile 1 with default Knots relay policy and
-`acceptnonstdtxn=0`. Unified sighash protection and the regtest-only backend guard
+`acceptnonstdtxn=0`. Unified sighash protection and the explicit network opt-in guard
 remain enabled. Ordinary public-key boards, rounds, transfers and exits carry
 explicit recovery reserves. See `FUNDED-EXITS.md` for accounting and limits.
 

@@ -111,7 +111,8 @@ impl PersistedWallet {
 		deep_tip: BlockRef,
 		min_trusted_confs: u32,
 	) -> anyhow::Result<Self> {
-		anyhow::ensure!(network == Network::Regtest, "experimental XBT port is regtest-only");
+		anyhow::ensure!(bitcoin_ext::paperclip_network::enabled(network),
+			"XBT mainnet requires explicit PAPERCLIP_XBT_MAINNET=1; only regtest is enabled by default");
 		let init = db.read(async |tx| { tx.read_aggregate_changeset(kind).await }).await?;
 		let fresh = init.is_none();
 

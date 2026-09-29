@@ -7,6 +7,7 @@ pub extern crate bitcoin;
 pub mod cpfp;
 pub mod fee;
 pub mod unified;
+pub mod paperclip_network;
 #[cfg(feature = "bdk")]
 pub mod unified_wallet;
 
