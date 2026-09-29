@@ -1,0 +1,23 @@
+name: Private regtest build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Check pinned shared protocol sources
+        run: sha256sum -c SHARED-SOURCE.sha256
+      - name: Build Paperclip
+        run: nix develop --command bash scripts/build.sh
+      - name: Check unified signatures
+        run: nix develop --command cargo test --locked -p bark-bitcoin-ext unified

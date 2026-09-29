@@ -18,7 +18,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / '.state' / 'lab'
 RPC_PORT, ASP_PORT, ADMIN_PORT, WEB_PORT = 38443, 38535, 38536, 38180
-EXPECTED_KNOTS = 'd04cd8211e711af989a7a62d0b8b55a8cfe496694392518da0ccb8488469b3799'
+EXPECTED_KNOTS = 'd04cd8211e711af989a7a62d0b8b55a8cfe496694392518da0ccb848469b3799'
 CHILDREN = []
 
 def run(args, capture=False):
@@ -74,6 +74,9 @@ def main():
         if not 1 <= args.mine <= 500: raise ValueError('Choose 1–500 blocks')
         print(json.dumps(mine(args.mine))); return
     if not os.environ.get('IN_NIX_SHELL'): raise RuntimeError('Run inside nix develop')
+    for key in list(os.environ):
+        if key.startswith(('BARK_', 'BARKD_')):
+            del os.environ[key]
     lock = (STATE / 'lock').open('w')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     if any(STATE.iterdir()) and not (STATE / 'identity').exists():
@@ -88,7 +91,9 @@ def main():
     if hashlib.sha256(node.read_bytes()).hexdigest() != EXPECTED_KNOTS:
         raise RuntimeError('Knots binary hash mismatch')
     for port in [RPC_PORT, ASP_PORT, ADMIN_PORT, WEB_PORT]:
-        with socket.socket() as probe: probe.bind(('127.0.0.1', port))
+        with socket.socket() as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind(('127.0.0.1', port))
     for folder in ['chain', 'pgsocket']: (STATE / folder).mkdir(exist_ok=True)
     pg = STATE / 'postgres'
     if not pg.exists(): run(['initdb', '-D', pg, '--auth-local=trust', '--auth-host=reject', '--no-locale'])
@@ -103,7 +108,7 @@ def main():
         '-rpcbind=127.0.0.1', '-listen=0', '-connect=0', '-dnsseed=0', '-discover=0',
         '-listenonion=0', '-natpmp=0', '-upnp=0', '-testactivationheight=blake2b@100',
         '-acceptnonstdtxn=0', '-mempooltruc=enforce', '-subdustfeepenalty=0',
-        '-fallbackfee=0.00002', '-dbcache=64', '-par=1'], 'knots')
+        '-fallbackfee=0.00002', '-dbcache=64', '-par=1', '-txindex=1'], 'knots')
     wait(lambda: rpc('getblockchaininfo')['chain'] == 'regtest')
     if 'faucet' not in rpc('listwallets'):
         if any(w['name'] == 'faucet' for w in rpc('listwalletdir')['wallets']): rpc('loadwallet', 'faucet')
@@ -129,15 +134,17 @@ def main():
     start([asp, '--config', config_path, 'start'], 'asp')
     status = wait(lambda: run([asp, 'rpc', '--addr', f'127.0.0.1:{ADMIN_PORT}', 'wallet'], True))
     if not (STATE / 'funded').exists():
-        rpc('sendtoaddress', status['rounds']['address'], 10, wallet=True); mine(3)
+        if status['rounds']['total_balance'] < 100_000_000:
+            rpc('sendtoaddress', status['rounds']['address'], 10, wallet=True); mine(3)
         for name in ['alice', 'bob']:
             path = STATE / name
-            run([wallet, '--datadir', path, 'create', '--regtest', '--ark', f'http://127.0.0.1:{ASP_PORT}',
-                 '--bitcoind', f'http://127.0.0.1:{RPC_PORT}', '--bitcoind-cookie', STATE / 'chain/regtest/.cookie'])
-            address = run([wallet, '--datadir', path, 'onchain', 'address'], True)['address']
-            rpc('sendtoaddress', address, 0.02, wallet=True); mine(3)
-            run([wallet, '--datadir', path, 'board', '1000000sat']); mine(3)
-            run([wallet, '--datadir', path, 'sync'])
+            if not path.exists():
+                run([wallet, '--datadir', path, 'create', '--regtest', '--ark', f'http://127.0.0.1:{ASP_PORT}',
+                     '--bitcoind', f'http://127.0.0.1:{RPC_PORT}', '--bitcoind-cookie', STATE / 'chain/regtest/.cookie'])
+                address = run([wallet, '--datadir', path, 'onchain', 'address'], True)['address']
+                rpc('sendtoaddress', address, 0.02, wallet=True); mine(3)
+                run([wallet, '--datadir', path, 'board', '1000000sat']); mine(3)
+            run([wallet, '--datadir', path, 'maintain'])
         (STATE / 'funded').touch()
     start([walletd, '--datadir', STATE / 'alice', '--host', '127.0.0.1', '--port', str(WEB_PORT)], 'wallet-api')
     print(f'Paperclip test wallet: http://127.0.0.1:{WEB_PORT}', flush=True)

@@ -1,5 +1,5 @@
 {
-	description = "ark";
+	description = "Paperclip XBT private test development environment";
 
 	nixConfig = {
 		extra-substituters = [ "https://bark.cachix.org" ];
@@ -198,47 +198,7 @@
 				};
 			in
 			{
-				packages = {
-					"slog-tools" = slog-tools;
-
-					# Release artifacts keyed by target triple.
-					bark-x86_64-unknown-linux-gnu  = barkPackages.x86_64-unknown-linux-gnu;
-					bark-x86_64-unknown-linux-musl = barkPackages.x86_64-unknown-linux-musl;
-					bark-aarch64-unknown-linux-musl = barkPackages.aarch64-unknown-linux-musl;
-					bark-armv7-unknown-linux-musleabihf = barkPackages.armv7-unknown-linux-musleabihf;
-					bark-x86_64-apple-darwin       = barkPackages.x86_64-apple-darwin;
-					bark-aarch64-apple-darwin      = barkPackages.aarch64-apple-darwin;
-					bark-x86_64-pc-windows-gnu     = barkPackages.x86_64-pc-windows-gnu;
-
-					# Release artifacts keyed by target triple.
-					bark-server-x86_64-unknown-linux-gnu  = serverPackages.x86_64-unknown-linux-gnu;
-					bark-server-x86_64-unknown-linux-musl = serverPackages.x86_64-unknown-linux-musl;
-				}
-				# `bark` and `bark-server` build for the current system. Only
-				# defined when the host triple is one of the packaged targets.
-				# Elsewhere nix fails with a clear "does not provide attribute" error.
-				// lib.optionalAttrs (builtins.hasAttr hostRustTarget barkPackages) {
-					bark = barkPackages.${hostRustTarget};
-				}
-				// lib.optionalAttrs (builtins.hasAttr hostRustTarget serverPackages) {
-					bark-server = serverPackages.${hostRustTarget};
-				};
-
-				# for `nix run` support
-				apps = let
-					mkApp = drv: bin: {
-						type = "app";
-						program = "${drv}/bin/${bin}";
-						meta.description = "Runs the ${bin} binary built for the current system";
-					};
-				in lib.optionalAttrs (builtins.hasAttr hostRustTarget barkPackages) {
-					bark  = mkApp barkPackages.${hostRustTarget} "bark";
-					barkd = mkApp barkPackages.${hostRustTarget} "barkd";
-				} // lib.optionalAttrs (builtins.hasAttr hostRustTarget serverPackages) {
-					captaind  = mkApp serverPackages.${hostRustTarget} "captaind";
-					watchmand = mkApp serverPackages.${hostRustTarget} "watchmand";
-				};
-
+				# Private test repositories expose development shells only.
 				# NB each of our shell files exposes a `env` and a `shell` which respectively
 				# contain only the env variables and the actual shell.
 				# This enables one shell inheriting the env vars from another shell.

@@ -1,0 +1,9 @@
+{
+  "missing_token": 401,
+  "invalid_token": 401,
+  "mnemonic_disabled": 404,
+  "authenticated_balance": 200,
+  "token_absent_from_logs": true,
+  "ark_transfer_received_sat": 10000,
+  "receive_address": "PASS"
+}

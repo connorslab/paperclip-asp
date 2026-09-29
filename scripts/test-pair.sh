@@ -5,7 +5,7 @@ umask 077
 : "${PAPERCLIP_WALLET_BIN:?Set an absolute path to paperclip-wallet}"
 : "${PAPERCLIP_ASP_BIN:?Set an absolute path to paperclip-asp}"
 : "${XBT_BITCOIND:?Set the verified Knots test binary}"
-expected=d04cd8211e711af989a7a62d0b8b55a8cfe496694392518da0ccb8488469b3799
+expected=d04cd8211e711af989a7a62d0b8b55a8cfe496694392518da0ccb848469b3799
 actual=$(sha256sum "$XBT_BITCOIND" | cut -d' ' -f1)
 [[ "$actual" == "$expected" ]] || { echo 'Unexpected Knots binary hash' >&2; exit 1; }
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -22,6 +22,9 @@ p=Path('testing/src/daemon/captaind/mod.rs')
 t=p.read_text(); old='format!("0.0.0.0:{}", public_port)'
 assert old in t
 p.write_text(t.replace(old, 'format!("127.0.0.1:{}", public_port)'))
+p=Path('testing/src/bark.rs')
+t=p.read_text(); assert '.strip_prefix("bark ")' in t
+p.write_text(t.replace('.strip_prefix("bark ")', '.strip_prefix("paperclip-wallet ")'))
 for name in ['justfile','testing/xbt-bitcoind']:
  p=Path(name); p.write_text(p.read_text().replace('#!/usr/bin/env bash', '#!'+shutil.which('bash')))
 PY
