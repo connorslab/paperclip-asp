@@ -107,6 +107,56 @@ pub struct ArkoorPackageCosignResponse {
 }
 
 impl ArkoorPackageBuilder<state::Initial> {
+	/// Fund each recovery transaction from the sender's inputs without reducing
+	/// the requested recipient amount. Change belongs to the sender. The caller
+	/// must persist the chosen inputs and keys before requesting signatures.
+	pub fn new_funded_payment(
+		inputs: Vec<Vtxo<Full>>, destination: ArkoorDestination, change_policy: VtxoPolicy,
+	) -> Result<(Self, Amount), ArkoorConstructionError> {
+		let funding = crate::exit_policy::paperclip_funding();
+		let reserve = funding.per_transaction();
+		let floor = bitcoin_ext::P2TR_DUST + crate::exit_policy::paperclip_policy().claim_fee;
+		if destination.total_amount < floor { return Err(ArkoorConstructionError::Dust); }
+		let mut remaining = destination.total_amount;
+		let mut fees = Amount::ZERO;
+		let mut builders = Vec::new();
+		for input in inputs {
+			let available = input.amount().checked_sub(reserve * 2)
+				.ok_or(ArkoorConstructionError::Dust)?;
+			if remaining == Amount::ZERO || available < floor {
+				return Err(ArkoorConstructionError::Dust);
+			}
+			if !matches!(input.policy(), VtxoPolicy::Pubkey(_))
+				|| !matches!(&destination.policy, VtxoPolicy::Pubkey(_))
+				|| !matches!(&change_policy, VtxoPolicy::Pubkey(_)) {
+				return Err(ArkoorConstructionError::IncompatibleExitFunding);
+			}
+			let pay = remaining.min(available);
+			if pay < floor { return Err(ArkoorConstructionError::Dust); }
+			let mut outputs = vec![ArkoorDestination {
+				total_amount: pay, policy: destination.policy.clone(),
+			}];
+			let fee = if pay == available {
+				reserve * 2
+			} else {
+				let change = input.amount().checked_sub(pay)
+					.and_then(|v| v.checked_sub(reserve * 3))
+					.filter(|v| *v >= floor).ok_or(ArkoorConstructionError::Dust)?;
+				outputs.push(ArkoorDestination { total_amount: change, policy: change_policy.clone() });
+				reserve * 3
+			};
+			fees = fees.checked_add(fee).ok_or(ArkoorConstructionError::Overflow)?;
+			builders.push(ArkoorBuilder::new_funded(input, outputs, true, funding)?);
+			remaining -= pay;
+		}
+		if remaining != Amount::ZERO {
+			return Err(ArkoorConstructionError::Unbalanced {
+				input: destination.total_amount - remaining, output: destination.total_amount,
+			});
+		}
+		Ok((Self { builders }, fees))
+	}
+
 	/// Allocate outputs to inputs with splitting support
 	///
 	/// Distributes outputs across inputs in order, splitting outputs when needed
@@ -523,6 +573,60 @@ mod test {
 			user_keypair: alice_keypair(),
 			server_keypair: server_keypair()
 		}.build()
+	}
+
+	fn funded_test_input(amount: Amount) -> (Transaction, Vtxo<Full>) {
+		let (mut funding, old) = dummy_vtxo_for_amount(amount);
+		let profile = crate::exit_policy::paperclip_funding();
+		funding.output[old.chain_anchor().vout as usize].value = amount + profile.per_transaction();
+		let point = bitcoin::OutPoint::new(funding.compute_txid(), old.chain_anchor().vout);
+		let builder = crate::board::BoardBuilder::new(alice_public_key(), old.expiry_height(),
+			server_keypair().public_key(), old.exit_delta())
+			.set_funded_funding_details(amount + profile.per_transaction(), profile.anchor(), profile.miner_fee(), point)
+			.unwrap().generate_user_nonces();
+		let server = crate::board::BoardBuilder::new_for_funded_cosign(alice_public_key(), old.expiry_height(),
+			server_keypair().public_key(), old.exit_delta(), amount + profile.per_transaction(),
+			profile.anchor(), profile.miner_fee(), point, *builder.user_pub_nonce()).unwrap();
+		let vtxo = builder.build_vtxo(&server.server_cosign(&server_keypair()), &alice_keypair()).unwrap();
+		(funding, vtxo)
+	}
+
+	#[test]
+	fn funded_payment_preserves_recipient_and_charges_sender() {
+		let (funding, input) = funded_test_input(Amount::from_sat(100_000));
+		let destination = ArkoorDestination {
+			total_amount: Amount::from_sat(10_000), policy: VtxoPolicy::new_pubkey(bob_public_key()),
+		};
+		let (builder, reserve) = ArkoorPackageBuilder::new_funded_payment(vec![input], destination,
+			VtxoPolicy::new_pubkey(alice_public_key())).unwrap();
+		assert_eq!(reserve, Amount::from_sat(6000));
+		let user = builder.generate_user_nonces(&[alice_keypair()]).unwrap();
+		let server = ArkoorPackageBuilder::from_cosign_request(user.cosign_request()).unwrap()
+			.server_cosign(&server_keypair()).unwrap();
+		let outputs = user.user_cosign(&[alice_keypair()], server.cosign_response()).unwrap().build_signed_vtxos();
+		assert_eq!(outputs.iter().map(|v| v.amount()).sum::<Amount>(), Amount::from_sat(94_000));
+		assert_eq!(outputs.iter().find(|v| v.user_pubkey() == bob_public_key()).unwrap().amount(), Amount::from_sat(10_000));
+		for output in outputs {
+			output.validate_unsigned(&funding).unwrap();
+			assert!(output.has_funded_exit());
+			for item in output.transactions() {
+				assert_eq!(output.exit_transaction_fee(item.tx.compute_txid()), Some(Amount::from_sat(1000)));
+			}
+		}
+	}
+
+	#[test]
+	fn funded_payment_refuses_legacy_dust_and_insufficient_reserves() {
+		let (_, input) = funded_test_input(Amount::from_sat(20_000));
+		for amount in [0, 329, 1000, 14_001, 19_000, 21_000] {
+			assert!(ArkoorPackageBuilder::new_funded_payment(vec![input.clone()], ArkoorDestination {
+				total_amount: Amount::from_sat(amount), policy: VtxoPolicy::new_pubkey(bob_public_key()),
+			}, VtxoPolicy::new_pubkey(alice_public_key())).is_err());
+		}
+		let (_, legacy) = dummy_vtxo_for_amount(Amount::from_sat(100_000));
+		assert!(ArkoorPackageBuilder::new_funded_payment(vec![legacy], ArkoorDestination {
+			total_amount: Amount::from_sat(10_000), policy: VtxoPolicy::new_pubkey(bob_public_key()),
+		}, VtxoPolicy::new_pubkey(alice_public_key())).is_err());
 	}
 
 	fn verify_package_builder(

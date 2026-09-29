@@ -282,6 +282,7 @@ impl Server {
 	#[allow(deprecated)] // vtxo_expiry_delta and offboard_feerate kept for old clients
 	pub fn ark_info(&self) -> ark::ArkInfo {
 		ark::ArkInfo {
+			exit_profile: ark::exit_policy::PAPERCLIP_EXIT_PROFILE,
 			network: self.config.network,
 			server_pubkey: self.server_pubkey,
 			mailbox_pubkey: self.mailbox_pubkey,
@@ -634,7 +635,7 @@ impl Server {
 
 		// Validate board fees
 		let fee = self.config.fees.board.calculate(amount)
-			.context("fee overflowed")?;
+			.context("fee overflowed")?.max(ark::exit_policy::paperclip_funding().anchor());
 		validate_and_subtract_fee(amount, fee)
 			.badarg("Board amount cannot support required fee")?;
 
@@ -711,16 +712,17 @@ impl Server {
 			}
 		}
 
-		let builder = BoardBuilder::new_for_cosign(
+		let builder = BoardBuilder::new_for_funded_cosign(
 			user_pubkey,
 			expiry_height,
 			self.server_pubkey,
 			self.config.vtxo_exit_delta,
 			amount,
 			fee,
+			ark::exit_policy::paperclip_funding().miner_fee(),
 			utxo,
 			user_pub_nonce,
-		);
+		)?;
 
 		info!("Cosigning board request for utxo {}", utxo);
 		let resp = builder.server_cosign(self.server_key.leak_ref());
@@ -790,6 +792,8 @@ impl Server {
 
 		// Validate the VTXO against its on-chain transaction
 		vtxo.validate(&funding_tx).badarg("invalid vtxo")?;
+		ark::exit_policy::paperclip_policy().check(&vtxo, &funding_tx, self.chain_tip().height)
+			.map_err(|e| anyhow!("unsafe board recovery path: {}", e))?;
 
 		// Verify this is actually a board VTXO (not another type)
 		let builder = BoardBuilder::new_from_vtxo(&vtxo, &funding_tx, self.server_pubkey)

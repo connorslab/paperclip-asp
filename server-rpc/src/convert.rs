@@ -142,6 +142,7 @@ impl From<ark::ArkInfo> for protos::ArkInfo {
 	#[allow(deprecated)] // vtxo_expiry_delta and offboard_feerate kept for old clients
 	fn from(v: ark::ArkInfo) -> Self {
 		protos::ArkInfo {
+			exit_profile: v.exit_profile,
 			network: v.network.to_string(),
 			server_pubkey: v.server_pubkey.serialize().to_vec(),
 			mailbox_pubkey: v.mailbox_pubkey.serialize().to_vec(),
@@ -179,6 +180,7 @@ impl TryFrom<protos::ArkInfo> for ark::ArkInfo {
 		}).map_err(|_| "invalid vtxo_lifetime")?;
 
 		Ok(ark::ArkInfo {
+			exit_profile: v.exit_profile,
 			network: v.network.parse().map_err(|_| "invalid network")?,
 			server_pubkey: PublicKey::from_slice(&v.server_pubkey)
 				.map_err(|_| "invalid server pubkey")?,
@@ -797,6 +799,7 @@ mod test {
 			"02dfa52f6690299d2d6a08323083e290597b56fee125063e5f4e2957731639c42c",
 		).unwrap();
 		protos::ArkInfo {
+			exit_profile: ark::exit_policy::PAPERCLIP_EXIT_PROFILE,
 			network: "regtest".into(),
 			server_pubkey: pk.serialize().to_vec(),
 			mailbox_pubkey: pk.serialize().to_vec(),

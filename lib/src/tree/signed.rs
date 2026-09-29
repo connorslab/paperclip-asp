@@ -225,6 +225,8 @@ impl VtxoTreeSpec {
 		Ok(self)
 	}
 
+	pub fn exit_funding(&self) -> Option<TreeExitFunding> { self.exit_funding }
+
 	fn exit_anchor_value(&self) -> Amount {
 		self.exit_funding.map(|f| f.anchor).unwrap_or(Amount::ZERO)
 	}

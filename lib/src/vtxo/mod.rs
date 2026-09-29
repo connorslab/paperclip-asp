@@ -796,6 +796,23 @@ impl<P: Policy> Vtxo<Full, P> {
 			))
 	}
 
+	/// Read the miner fee of one transaction in a validated recovery chain.
+	pub fn exit_transaction_fee(&self, txid: bitcoin::Txid) -> Option<Amount> {
+		let mut value = self.chain_anchor_amount()?;
+		for item in self.transactions() {
+			let total = item.tx.output.iter().try_fold(Amount::ZERO, |n, o| n.checked_add(o.value))?;
+			let fee = value.checked_sub(total)?;
+			if item.tx.compute_txid() == txid { return Some(fee); }
+			value = item.tx.output.get(item.output_idx)?.value;
+		}
+		None
+	}
+
+	/// Every ancestor must pay its own fee; an empty path is not funded.
+	pub fn has_funded_exit(&self) -> bool {
+		!self.genesis.items.is_empty() && self.genesis.items.iter().all(|i| i.miner_fee > Amount::ZERO)
+	}
+
 	/// Serialize the genesis chain into a fresh `Vec<u8>`.
 	pub fn serialize_genesis(&self) -> Vec<u8> {
 		let mut out = Vec::new();

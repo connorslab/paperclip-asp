@@ -57,6 +57,10 @@ impl Server {
 			bail!("should not use arkoor checkpoints");
 		}
 
+		for request in &cosign_req.requests {
+			ensure!(request.exit_funding == Some(ark::exit_policy::paperclip_funding()),
+				"funded recovery profile required");
+		}
 		// then we create the builder
 		let ret = match ArkoorPackageBuilder::from_cosign_request(cosign_req) {
 			Ok(ret) => ret,
@@ -66,6 +70,14 @@ impl Server {
 		};
 
 		for (idx, b) in ret.builders.iter().enumerate() {
+			let minimum = bitcoin_ext::P2TR_DUST + ark::exit_policy::paperclip_policy().claim_fee;
+			ensure!(b.all_outputs().all(|o| o.total_amount >= minimum
+				&& matches!(&o.policy, VtxoPolicy::Pubkey(_))), "unrecoverable output");
+			let deadline = u32::try_from(b.input().exit_depth()).context("exit depth overflow")?
+				.checked_add(u32::from(b.input().exit_delta().to_u16()) + 14)
+				.and_then(|v| v.checked_add(self.chain_tip().height.to_u32()))
+				.context("exit deadline overflow")?;
+			ensure!(deadline < b.input().expiry_height().to_u32(), "refresh required before another transfer");
 			if let Some(max_exit_depth) = params.max_input_exit_depth {
 				let depth = b.input().exit_depth();
 				if depth >= max_exit_depth {

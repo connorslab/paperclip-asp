@@ -207,6 +207,9 @@ impl rpc::server::ArkService for Server {
 				in order to be able to board.");
 		}
 
+		if req.exit_profile != ark::exit_policy::PAPERCLIP_EXIT_PROFILE {
+			return Err(tonic::Status::failed_precondition("funded exit profile required"));
+		}
 		let amount = Amount::from_sat(req.amount);
 		let user_pubkey = PublicKey::from_bytes(&req.user_pubkey)?;
 		let expiry_height = check_block_height(req.expiry_height)

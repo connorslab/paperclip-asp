@@ -122,7 +122,9 @@ message ArkInfo {
 	// Link to the server's terms of service, if any.
 	optional string tos_link = 22;
 
-	// last index: 22
+	uint32 exit_profile = 23;
+
+	// last index: 23
 }
 
 message OffboardFeeRateResponse {
@@ -218,6 +220,7 @@ message BoardCosignRequest {
 	bytes user_pubkey = 4;
 	bytes pub_nonce = 5;
 	bytes funding_tx = 6;
+	uint32 exit_profile = 7;
 }
 
 message BoardCosignResponse {

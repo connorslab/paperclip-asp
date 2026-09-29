@@ -17,6 +17,23 @@ pub struct FundedExitPolicy {
 	pub claim_fee: Amount,
 }
 
+pub const PAPERCLIP_EXIT_PROFILE: u32 = 1;
+
+/// Fixed reserves for the private regtest profile; not a future fee guarantee.
+pub fn paperclip_funding() -> crate::tree::signed::TreeExitFunding {
+	crate::tree::signed::TreeExitFunding::new(Amount::from_sat(1000), Amount::from_sat(1000))
+		.expect("constant funded profile is valid")
+}
+
+pub fn paperclip_policy() -> FundedExitPolicy {
+	FundedExitPolicy {
+		minimum_relay: FeeRate::from_sat_per_kwu(250),
+		dust_relay: FeeRate::from_sat_per_kwu(750),
+		confirmation_margin: BlockDelta::new(12),
+		claim_fee: Amount::from_sat(1000),
+	}
+}
+
 impl FundedExitPolicy {
 	/// Check an ordinary pubkey balance before accepting it as recoverable.
 	/// HTLC recovery has extra conditions and needs separate checks.

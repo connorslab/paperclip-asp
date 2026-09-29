@@ -52,6 +52,8 @@ lazy_static! {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArkInfo {
+	/// Explicit recovery transaction profile; zero denotes the legacy graph.
+	pub exit_profile: u32,
 	/// The bitcoin network the server operates on
 	pub network: Network,
 	/// The Ark server pubkey

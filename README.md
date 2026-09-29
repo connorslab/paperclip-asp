@@ -14,10 +14,10 @@ nix develop --command bash scripts/build.sh
 ```
 
 Use the private test setup with the matching wallet revision. The application
-still requires Knots `mempooltruc=enforce` and `subdustfeepenalty=0`, with
+uses funded recovery profile 1 with default Knots relay policy and
 `acceptnonstdtxn=0`. Unified sighash protection and the regtest-only backend guard
-remain enabled. The standalone default-policy funded-exit prototype is not a
-complete wallet/server deployment feature.
+remain enabled. Ordinary public-key boards, rounds, transfers and exits carry
+explicit recovery reserves. See `FUNDED-EXITS.md` for accounting and limits.
 
 ## Test the pair
 
@@ -34,6 +34,11 @@ ASP endpoints, the pinned source harness, and no production RPC or wallets.
 The fixture creates and cleans up its own daemons. Do not use existing wallet or
 chain directories for the fixture. Keep its output private: it contains test data.
 
+`scripts/lab.py` describes the earlier interactive lab and retains its original
+state and relay settings. It is not the default-policy validation runner; use
+`scripts/test-pair.sh` for this profile. Existing lab wallets need a planned
+cooperative refresh, not an assumption that old signatures gained reserves.
+
 ## Operations and limits
 
 Use a dedicated PostgreSQL database and separate Knots regtest process. Bind
@@ -41,6 +46,7 @@ public/admin/integration test RPC endpoints to loopback. Keep any persistent tes
 state outside Git, with owner-only access. Do not connect a production Lightning
 node. Existing Paperclip pool and Lightning services must remain separate.
 
-Default-policy integration, comprehensive expiry/fee/reorg/recovery tests,
-production monitoring and independent review remain prerequisites for real funds.
+Comprehensive adversarial testing, production monitoring and independent review
+remain prerequisites for real funds. Lightning and liquidity-pool allocation
+are disabled in this profile. See `VALIDATION.md` for verified coverage.
 See `PROTOCOL.json`, `UPSTREAM.md` and the original MIT `LICENSE`.

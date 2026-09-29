@@ -293,7 +293,8 @@ ppm_expiry_table = [
 [vtxopool]
 # The target set of VTXOs to maintain in the pool
 # Format: "<amount>:<count>", f.e. "1000sat:50"
-vtxo_targets = [ "1000sat:10", "10000sat:10" ]
+# Funded recovery profile 1 does not yet support liquidity-pool issuance.
+vtxo_targets = []
 # At what % of the target should new VTXOs be issued
 #
 # Once one of the target amounts falls below target, all amounts

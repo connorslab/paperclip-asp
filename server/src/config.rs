@@ -517,6 +517,9 @@ impl Config {
 	///
 	/// It also checks if all required configurations are available
 	pub fn validate(&self) -> anyhow::Result<()> {
+		ensure!(self.cln_array.is_empty(), "funded exit test profile does not support Lightning contracts yet");
+		ensure!(self.vtxopool.vtxo_targets.is_empty(), "funded exit test profile requires an empty liquidity pool");
+
 		self.bitcoind.validate()?;
 		self.fees.validate()?;
 
@@ -851,7 +854,7 @@ mod test {
 	}
 
 	#[test]
-	fn init_accepts_full_cln_config() {
+	fn funded_profile_rejects_full_cln_config() {
 		let bitcoind_cookie = Some(PathBuf::from("/not/hot/dog/but/cookie"));
 		let uri = "http://belson.labs:13444".to_string();
 		let server_cert_path = "/hooli/http_public/certs/server.crt".to_string();
@@ -874,7 +877,7 @@ mod test {
 		cfg.bitcoind.cookie = bitcoind_cookie.clone();
 		cfg.cln_array = cln_array;
 
-		cfg.validate().expect("invalid configuration");
+		assert!(cfg.validate().unwrap_err().to_string().contains("Lightning contracts"));
 
 		let lncfg = cfg.cln_array.get(0).unwrap();
 		assert_eq!(lncfg.uri, Uri::from_str(uri.clone().as_str()).unwrap());
@@ -904,7 +907,7 @@ mod test {
 		].into_iter().map(|(k, v)| (k.into(), v.into())).collect::<HashMap<String, String>>();
 
 		let cfg = Config::load_with_custom_env(DEFAULT_CAPTAIND_CONFIG_PATH, Some(env)).unwrap();
-		cfg.validate().expect("invalid configuration");
+		assert!(cfg.validate().unwrap_err().to_string().contains("Lightning contracts"));
 
 		assert_eq!(cfg.vtxo_lifetime, BlockDelta::new(42));
 		assert_eq!(cfg.bitcoind.cookie, Some("/not/hot/dog/but/cookie".into()));

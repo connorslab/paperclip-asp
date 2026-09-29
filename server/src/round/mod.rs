@@ -885,7 +885,8 @@ impl CollectingPayments {
 			expiry_height,
 			srv.config.vtxo_exit_delta,
 			vec![self.cosign_key.public_key()],
-		);
+		).with_exit_funding(ark::exit_policy::paperclip_funding())
+			.map_err(|e| RoundError::Recoverable(anyhow!(e)))?;
 		if srv.config.round_legacy_hashlock_clauses {
 			warn!("Building round vtxo tree with legacy v0 hashlock clauses. \
 				This should only ever happen in tests.");
