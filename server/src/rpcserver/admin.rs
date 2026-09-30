@@ -39,6 +39,19 @@ impl rpc::server::WalletAdminService for Server {
 }
 
 #[async_trait]
+impl rpc::server::WalletAdminService for crate::watchman::Daemon {
+	async fn wallet_status(
+		&self,
+		_req: tonic::Request<protos::Empty>,
+	) -> Result<tonic::Response<protos::WalletStatusResponse>, tonic::Status> {
+		Ok(tonic::Response::new(protos::WalletStatusResponse {
+			rounds: None,
+			watchman: Some(self.wallet_status().await.into()),
+		}))
+	}
+}
+
+#[async_trait]
 impl rpc::server::RoundAdminService for Server {
 	#[tracing::instrument(skip(self, _req))]
 	async fn trigger_round(
@@ -211,7 +224,7 @@ pub async fn run_rpc_server(srv: Arc<Server>) -> anyhow::Result<()> {
 	Ok(())
 }
 
-/// Run the watchmand admin gRPC server, exposing only `SweepAdminService`.
+/// Run the watchmand admin gRPC server for sweeps and wallet status.
 pub async fn run_watchmand_admin_rpc_server(
 	addr: SocketAddr,
 	daemon: Arc<crate::watchman::Daemon>,
@@ -220,7 +233,8 @@ pub async fn run_watchmand_admin_rpc_server(
 	info!("Starting watchmand admin gRPC service on address {}", addr);
 
 	let routes = tonic::service::Routes::default()
-		.add_service(rpc::server::SweepAdminServiceServer::from_arc(daemon));
+		.add_service(rpc::server::SweepAdminServiceServer::from_arc(daemon.clone()))
+		.add_service(rpc::server::WalletAdminServiceServer::from_arc(daemon));
 
 	tonic::transport::Server::builder()
 		.http2_max_pending_accept_reset_streams(Some(DEFAULT_HTTP2_MAX_PENDING_ACCEPT_RESET_STREAMS))

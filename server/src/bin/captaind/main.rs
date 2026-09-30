@@ -676,9 +676,13 @@ async fn run_rpc(addr: &str, cmd: RpcCommand) -> anyhow::Result<()> {
 				.await.context("failed to connect to rpc")?;
 
 			let res = rpc.wallet_status(protos::Empty {}).await?.into_inner();
-			let ret = serde_json::json!({
-				"rounds": WalletStatus(res.rounds.unwrap().try_into().expect("invalid response")),
-			});
+			let mut ret = serde_json::Map::new();
+			for (name, wallet) in [("rounds", res.rounds), ("watchman", res.watchman)] {
+				if let Some(wallet) = wallet {
+					let status = WalletStatus(wallet.try_into().context("invalid wallet response")?);
+					ret.insert(name.into(), serde_json::to_value(status)?);
+				}
+			}
 			serde_json::to_writer_pretty(std::io::stdout(), &ret).unwrap();
 			println!("");
 		},

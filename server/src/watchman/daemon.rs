@@ -247,6 +247,10 @@ impl Daemon {
 		&self.watchman_handle
 	}
 
+	pub async fn wallet_status(&self) -> server_rpc::WalletStatus {
+		self.watchman_wallet.lock().await.status()
+	}
+
 	/// Waits for server to terminate.
 	pub async fn wait(&self) {
 		self.rtmgr.wait().await;
