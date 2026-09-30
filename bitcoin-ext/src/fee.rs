@@ -15,6 +15,34 @@ lazy_static! {
 	pub static ref P2A_SCRIPT: ScriptBuf = ScriptBuf::new_p2a();
 }
 
+/// Signed recovery format. Never reinterpret a legacy signed transaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExitFormat {
+	#[default]
+	LegacyV3,
+	StandardV2,
+}
+
+impl ExitFormat {
+	pub fn code(self) -> u8 { match self { Self::LegacyV3 => 0, Self::StandardV2 => 1 } }
+	pub fn from_code(code: u8) -> Result<Self, &'static str> {
+		match code { 0 => Ok(Self::LegacyV3), 1 => Ok(Self::StandardV2), _ => Err("unknown exit format") }
+	}
+	pub fn version(self) -> bitcoin::transaction::Version {
+		bitcoin::transaction::Version(match self { Self::LegacyV3 => 3, Self::StandardV2 => 2 })
+	}
+	pub fn anchor(self, value: Amount) -> TxOut {
+		match self {
+			Self::LegacyV3 => fee_anchor_with_amount(value),
+			Self::StandardV2 => TxOut { value, script_pubkey: standard_anchor_script().to_p2wsh() },
+		}
+	}
+}
+
+/// Public fee-bump output using ordinary SegWit v0 rather than P2A/TRUC.
+/// This is not a protected user balance; anyone may spend it.
+pub fn standard_anchor_script() -> ScriptBuf { ScriptBuf::from_bytes(vec![0x51]) }
+
 /// Create a p2a fee anchor output with the given amount.
 pub fn fee_anchor_with_amount(amount: Amount) -> TxOut {
 	TxOut {

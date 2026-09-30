@@ -12,7 +12,7 @@ use bitcoin::secp256k1::{schnorr, Keypair, PublicKey, XOnlyPublicKey};
 use bitcoin::sighash::{self, SighashCache, TapSighash, TapSighashType};
 use secp256k1_musig::musig::{AggregatedNonce, PartialSignature, PublicNonce, SecretNonce};
 
-use bitcoin_ext::{fee, BlockDelta, BlockHeight, TaprootSpendInfoExt, TransactionExt, TxOutExt};
+use bitcoin_ext::{ BlockDelta, BlockHeight, TaprootSpendInfoExt, TransactionExt, TxOutExt};
 
 use crate::{musig, scripts, ServerVtxoPolicy, Vtxo, VtxoId, VtxoPolicy, VtxoRequest, SECP};
 use crate::encode::{
@@ -164,11 +164,15 @@ pub struct VtxoTreeSpec {
 /// The anchor is anyone-can-spend; it is not a protected wallet balance.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct TreeExitFunding {
+	format: bitcoin_ext::fee::ExitFormat,
 	anchor: Amount,
 	miner_fee: Amount,
 }
 
 impl TreeExitFunding {
+	pub fn format(self) -> bitcoin_ext::fee::ExitFormat { self.format }
+	pub fn with_format(mut self, format: bitcoin_ext::fee::ExitFormat) -> Self { self.format = format; self }
+
 	pub fn anchor(self) -> Amount { self.anchor }
 	pub fn miner_fee(self) -> Amount { self.miner_fee }
 	pub fn per_transaction(self) -> Amount { self.anchor + self.miner_fee }
@@ -180,7 +184,7 @@ impl TreeExitFunding {
 		}
 		anchor.checked_add(miner_fee).filter(|a| *a <= Amount::MAX_MONEY)
 			.ok_or("exit reserve overflow")?;
-		Ok(Self { anchor, miner_fee })
+		Ok(Self { anchor, miner_fee, format: bitcoin_ext::fee::ExitFormat::LegacyV3 })
 	}
 }
 
@@ -226,6 +230,10 @@ impl VtxoTreeSpec {
 	}
 
 	pub fn exit_funding(&self) -> Option<TreeExitFunding> { self.exit_funding }
+
+	fn exit_format(&self) -> bitcoin_ext::fee::ExitFormat {
+		self.exit_funding.map(|f| f.format()).unwrap_or_default()
+	}
 
 	fn exit_anchor_value(&self) -> Amount {
 		self.exit_funding.map(|f| f.anchor).unwrap_or(Amount::ZERO)
@@ -347,7 +355,7 @@ impl VtxoTreeSpec {
 		children: impl Iterator<Item = ChildSpec<'a>>,
 	) -> Transaction {
 		Transaction {
-			version: bitcoin::transaction::Version(3),
+			version: self.exit_format().version(),
 			lock_time: bitcoin::absolute::LockTime::ZERO,
 			input: vec![TxIn {
 				previous_output: OutPoint::null(), // we will fill this later
@@ -373,7 +381,7 @@ impl VtxoTreeSpec {
 						value: output_value,
 					}
 				},
-			}).chain(Some(fee::fee_anchor_with_amount(self.exit_anchor_value()))).collect(),
+			}).chain(Some(self.exit_format().anchor(self.exit_anchor_value()))).collect(),
 		}
 	}
 
@@ -386,7 +394,12 @@ impl VtxoTreeSpec {
 		// We collect fees in rounds by the difference in value between the inputs and outputs which
 		// is enforced by the round payment validation code. Therefore, we can leave fees set to
 		// zero for the leaf tx.
-		vtxo::create_exit_tx(OutPoint::null(), txout, None, self.exit_anchor_value())
+		{
+			let mut tx = vtxo::create_exit_tx(OutPoint::null(), txout, None, self.exit_anchor_value());
+			tx.version = self.exit_format().version();
+			tx.output[1] = self.exit_format().anchor(self.exit_anchor_value());
+			tx
+		}
 	}
 
 	/// Calculate all the aggregate cosign pubkeys by aggregating the leaf and server pubkeys.
@@ -1066,7 +1079,7 @@ impl CachedSignedVtxoTree {
 		let other_outputs = self.txs.get(node_idx).expect("Each node has a tx")
 			.output.iter().enumerate()
 			.filter(|(i, _)| *i != output_idx as usize) // Exclude this output
-			.filter(|(_, out)| !out.is_p2a_fee_anchor())    // Exclude the fee-anchor
+			.filter(|(_, out)| !out.is_fee_anchor())    // Exclude the fee-anchor
 			.map(|(_, out)| out)
 			.cloned()
 			.collect();
@@ -1102,7 +1115,7 @@ impl CachedSignedVtxoTree {
 
 		let fee_amount = self.spec.spec.exit_anchor_value();
 		let miner_fee = self.spec.spec.exit_miner_fee();
-		GenesisItem {transition, output_idx, other_outputs, fee_amount, miner_fee }
+		GenesisItem {exit_format: self.spec.spec.exit_format(), transition, output_idx, other_outputs, fee_amount, miner_fee }
 	}
 
 	/// Construct the server vtxo at the given node index.
@@ -1610,6 +1623,17 @@ pub mod builder {
 			})
 		}
 
+		/// Fund every pool recovery transaction before committing the funding output.
+		pub fn with_exit_funding(mut self, funding: super::TreeExitFunding) -> Result<Self, SignedTreeBuilderError> {
+			self.tree = match self.tree {
+				BuilderTree::Spec(spec) => BuilderTree::Spec(
+					spec.with_exit_funding(funding).map_err(SignedTreeBuilderError)?,
+				),
+				_ => return Err(SignedTreeBuilderError("funding must be set before the UTXO")),
+			};
+			Ok(self)
+		}
+
 		/// Set the utxo from which the tree will be created
 		pub fn set_utxo(self, utxo: OutPoint) -> SignedTreeBuilder<state::CanGenerateNonces> {
 			let unsigned_tree = match self.tree {
@@ -1691,6 +1715,42 @@ pub mod builder {
 				server_cosign_pubkey,
 				exit_delta,
 			)?.into_unsigned_tree(utxo);
+
+			Ok(SignedTreeBuilder {
+				expiry_height,
+				server_pubkey,
+				exit_delta,
+				cosign_pubkey,
+				unlock_preimage,
+				user_pub_nonces,
+				tree: BuilderTree::Unsigned(unsigned_tree),
+				user_sec_nonces: None,
+				_state: PhantomData,
+			})
+		}
+
+		/// Cosign a pool tree using the funded version-2 profile.
+		pub fn new_for_funded_cosign(
+			vtxos: impl IntoIterator<Item = VtxoRequest>,
+			cosign_pubkey: PublicKey,
+			unlock_preimage: UnlockPreimage,
+			expiry_height: BlockHeight,
+			server_pubkey: PublicKey,
+			server_cosign_pubkey: PublicKey,
+			exit_delta: BlockDelta,
+			utxo: OutPoint,
+			user_pub_nonces: Vec<musig::PublicNonce>,
+		) -> Result<SignedTreeBuilder<state::ServerCanCosign>, SignedTreeBuilderError> {
+			let unsigned_tree = SignedTreeBuilder::construct_tree_spec(
+				vtxos,
+				cosign_pubkey,
+				sha256::Hash::hash(&unlock_preimage),
+				expiry_height,
+				server_pubkey,
+				server_cosign_pubkey,
+				exit_delta,
+			)?.with_exit_funding(crate::exit_policy::paperclip_funding())
+				.map_err(SignedTreeBuilderError)?.into_unsigned_tree(utxo);
 
 			Ok(SignedTreeBuilder {
 				expiry_height,
@@ -1794,10 +1854,11 @@ const VTXO_TREE_SPEC_VERSION: u8 = 0x02;
 
 impl ProtocolEncoding for VtxoTreeSpec {
 	fn encode<W: io::Write + ?Sized>(&self, w: &mut W) -> Result<(), io::Error> {
-		w.emit_u8(if self.exit_funding.is_some() { 3 } else { VTXO_TREE_SPEC_VERSION })?;
+		w.emit_u8(if self.exit_funding.is_some() { 4 } else { VTXO_TREE_SPEC_VERSION })?;
 		if let Some(funding) = self.exit_funding {
 			w.emit_u64(funding.anchor.to_sat())?;
 			w.emit_u64(funding.miner_fee.to_sat())?;
+			w.emit_u8(funding.format.code())?;
 		}
 		w.emit_u32(self.expiry_height.to_u32())?;
 		self.server_pubkey.encode(w)?;
@@ -1810,14 +1871,17 @@ impl ProtocolEncoding for VtxoTreeSpec {
 	fn decode<R: io::Read + ?Sized>(r: &mut R) -> Result<Self, ProtocolDecodingError> {
 		let version = r.read_u8()?;
 
-		if version != VTXO_TREE_SPEC_VERSION && version != 3 {
+		if version != VTXO_TREE_SPEC_VERSION && version != 3 && version != 4 {
 			return Err(ProtocolDecodingError::invalid(format_args!(
 				"invalid VtxoTreeSpec encoding version byte: {version:#x}",
 			)));
 		}
-		let exit_funding = if version == 3 {
-			Some(TreeExitFunding::new(Amount::from_sat(r.read_u64()?), Amount::from_sat(r.read_u64()?))
-				.map_err(ProtocolDecodingError::invalid)?)
+		let exit_funding = if version >= 3 {
+			let funding = TreeExitFunding::new(Amount::from_sat(r.read_u64()?), Amount::from_sat(r.read_u64()?))
+				.map_err(ProtocolDecodingError::invalid)?;
+			Some(if version >= 4 {
+				funding.with_format(bitcoin_ext::fee::ExitFormat::from_code(r.read_u8()?).map_err(ProtocolDecodingError::invalid)?)
+			} else { funding })
 		} else { None };
 
 		let expiry_height = check_block_height(r.read_u32()?)
@@ -1928,7 +1992,7 @@ mod test {
 			}
 			let spec = spec.with_exit_funding(profile).unwrap();
 			encoding_roundtrip(&spec);
-			assert_eq!(spec.serialize()[0], 3);
+			assert_eq!(spec.serialize()[0], 4);
 			let funding = Transaction { version: transaction::Version::TWO,
 				lock_time: absolute::LockTime::ZERO, input: vec![],
 				output: vec![spec.funding_tx_txout()] };
@@ -1936,6 +2000,55 @@ mod test {
 			let unsigned = spec.into_unsigned_tree(OutPoint::new(funding.compute_txid(), 0));
 			let map = unsigned.txs.iter().map(|t| (t.compute_txid(), t)).collect::<HashMap<_, _>>();
 			for tx in &unsigned.txs {
+				let prev = tx.input[0].previous_output;
+				let value = if prev.txid == funding.compute_txid() { funding.output[0].value }
+					else { map[&prev.txid].output[prev.vout as usize].value };
+				assert_eq!(value - tx.output_value(), Amount::from_sat(1000));
+				assert!(tx.output.iter().all(|o| o.value >= o.script_pubkey.minimal_non_dust()));
+			}
+			let msg = secp256k1::Message::from_digest(sha256::Hash::hash(b"structure-only").to_byte_array());
+			let sig = SECP.sign_schnorr(&msg, server);
+			let nb_internal = unsigned.nb_internal_nodes();
+			let cached = unsigned.into_signed_tree(vec![sig; nb_internal]).into_cached_tree();
+			for vtxo in cached.output_vtxos() {
+				vtxo.validate_unsigned(&funding).unwrap();
+				assert_eq!(vtxo.amount(), Amount::from_sat(100_000));
+				encoding_roundtrip(&vtxo);
+			}
+		}
+		assert!(TreeExitFunding::new(Amount::ZERO, Amount::from_sat(1000)).is_err());
+		assert!(TreeExitFunding::new(Amount::from_sat(330), Amount::ZERO).is_err());
+		assert!(TreeExitFunding::new(Amount::MAX_MONEY, Amount::MAX_MONEY).is_err());
+	}
+	#[test]
+	fn standard_v2_tree_reserves_and_reconstruction() {
+		let user = &*DUMMY_USER_KEY;
+		let server = &*DUMMY_SERVER_KEY;
+		for count in [1, 2, 4, 5, 27] {
+			let spec = VtxoTreeSpec::new((0..count).map(|_| VtxoLeafSpec {
+				vtxo: VtxoRequest { amount: Amount::from_sat(100_000),
+					policy: VtxoPolicy::new_pubkey(user.public_key()) },
+				cosign_pubkey: None,
+				unlock_hash: sha256::Hash::hash(&[7; 32]),
+			}).collect(), server.public_key(), BlockHeight::new(1000), BlockDelta::new(6),
+				vec![server.public_key()]);
+			assert_eq!(spec.serialize()[0], 2);
+			let profile = TreeExitFunding::new(Amount::from_sat(330), Amount::from_sat(1000)).unwrap().with_format(bitcoin_ext::fee::ExitFormat::StandardV2);
+			if count == 1 {
+				assert!(spec.with_exit_funding(profile).is_err());
+				continue;
+			}
+			let spec = spec.with_exit_funding(profile).unwrap();
+			encoding_roundtrip(&spec);
+			assert_eq!(spec.serialize()[0], 4);
+			let funding = Transaction { version: transaction::Version::TWO,
+				lock_time: absolute::LockTime::ZERO, input: vec![],
+				output: vec![spec.funding_tx_txout()] };
+			assert_eq!(funding.output[0].value.to_sat(), count * 100_000 + spec.nb_nodes() as u64 * 1330);
+			let unsigned = spec.into_unsigned_tree(OutPoint::new(funding.compute_txid(), 0));
+			let map = unsigned.txs.iter().map(|t| (t.compute_txid(), t)).collect::<HashMap<_, _>>();
+			for tx in &unsigned.txs {
+				assert_eq!(tx.version, bitcoin::transaction::Version::TWO);
 				let prev = tx.input[0].previous_output;
 				let value = if prev.txid == funding.compute_txid() { funding.output[0].value }
 					else { map[&prev.txid].output[prev.vout as usize].value };

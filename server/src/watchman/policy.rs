@@ -1,11 +1,14 @@
 
+use std::collections::HashSet;
+
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{Amount, Transaction, Txid};
 
 use ark::{ServerVtxo, ServerVtxoPolicy, VtxoId, VtxoPolicy};
 use ark::lightning::PaymentHash;
 use bitcoind_async_client::Client as BitcoindClient;
-use bitcoin_ext::{fee, BlockDelta, BlockHeight, P2TR_DUST};
+use bitcoin_ext::{BlockDelta, BlockHeight, TxOutExt, P2TR_DUST};
+use bitcoin_ext::rpc::BitcoinAsyncRpcExt;
 use server_log::slog;
 use tracing::{error, warn};
 
@@ -19,6 +22,26 @@ struct ProgressSpec {
 	is_signed: bool,
 }
 
+/// Supply locally stored connector ancestry before a scoped negative lookup.
+async fn register_pruned_ancestry(client: &BitcoindClient, db: &Db, txid: Txid) -> anyhow::Result<()> {
+	if std::env::var("PAPERCLIP_PRUNED_RPC").as_deref() != Ok("1") { return Ok(()); }
+	let mut pending = vec![txid];
+	let mut seen = HashSet::new();
+	let mut transactions = Vec::new();
+	while let Some(txid) = pending.pop() {
+		if !seen.insert(txid) { continue; }
+		anyhow::ensure!(seen.len() <= 512, "Recovery ancestry exceeds coverage registration limit");
+		if let Some(vtx) = db.read(async |t| t.get_virtual_transaction_by_txid(txid).await).await? {
+			if let Some(tx) = vtx.signed_tx {
+				pending.extend(tx.input.iter().map(|i| i.previous_output.txid));
+				transactions.push(tx.into_owned());
+			}
+		}
+	}
+	client.register_pruned_transactions(&transactions).await?;
+	Ok(())
+}
+
 /// We ignore transactions with dust-outputs because they are non-standard.
 /// Their is no point in trying to claim them. We will only get warnings
 ///
@@ -30,7 +53,7 @@ fn is_ignorable_dust(tx: &Transaction, input_amount: Amount) -> bool {
 	}
 	tx.output.iter().any(|o| {
 		!o.script_pubkey.is_op_return()
-			&& o.script_pubkey != *fee::P2A_SCRIPT
+			&& !o.is_fee_anchor()
 			&& o.value < o.script_pubkey.minimal_non_dust()
 	})
 }
@@ -370,6 +393,8 @@ impl ActionContextFetcher<'_> {
 				}
 
 				let parent_txid = tx.input[1].previous_output.txid;
+				register_pruned_ancestry(self.bitcoind, self.db, parent_txid).await
+					.inspect_err(|e| warn!("Recovery ancestry coverage unavailable: {e:#}")).ok()?;
 				let status = bcd::tx_status(self.bitcoind, parent_txid).await.inspect_err(|e| {
 					warn!("bitcoind rpc error fetching parent progress tx {} for {}: {:#}",
 						parent_txid, child_txid, e,

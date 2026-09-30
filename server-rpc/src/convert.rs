@@ -143,6 +143,7 @@ impl From<ark::ArkInfo> for protos::ArkInfo {
 	fn from(v: ark::ArkInfo) -> Self {
 		protos::ArkInfo {
 			exit_profile: v.exit_profile,
+		funded_lightning: v.funded_lightning,
 			network: v.network.to_string(),
 			server_pubkey: v.server_pubkey.serialize().to_vec(),
 			mailbox_pubkey: v.mailbox_pubkey.serialize().to_vec(),
@@ -181,6 +182,7 @@ impl TryFrom<protos::ArkInfo> for ark::ArkInfo {
 
 		Ok(ark::ArkInfo {
 			exit_profile: v.exit_profile,
+		funded_lightning: v.funded_lightning,
 			network: v.network.parse().map_err(|_| "invalid network")?,
 			server_pubkey: PublicKey::from_slice(&v.server_pubkey)
 				.map_err(|_| "invalid server pubkey")?,
@@ -614,6 +616,7 @@ impl<V: VtxoRef> From<ArkoorCosignRequest<V>> for protos::ArkoorCosignRequest {
 		Self {
 			exit_funding: v.exit_funding.map(|f| protos::ExitFunding {
 				anchor_sat: f.anchor().to_sat(), miner_fee_sat: f.miner_fee().to_sat(),
+			exit_format: u32::from(f.format().code()),
 			}),
 			input_vtxo_id: v.input.vtxo_id().serialize(),
 			user_pub_nonces: v.user_pub_nonces.into_iter()
@@ -648,9 +651,12 @@ impl TryFrom<protos::ArkoorCosignRequest> for ArkoorCosignRequest<VtxoId> {
 			ArkoorCosignAttestation::deserialize(&v.attestation)
 				.map_err(|_| "Failed to parse attestation")?,
 		);
-		req.exit_funding = v.exit_funding.map(|f| ark::tree::signed::TreeExitFunding::new(
-			Amount::from_sat(f.anchor_sat), Amount::from_sat(f.miner_fee_sat),
-		)).transpose()?;
+		req.exit_funding = v.exit_funding.map(|f| {
+			let format = ark::exit_policy::ExitFormat::from_code(u8::try_from(f.exit_format).map_err(|_| "invalid exit format")?)?;
+			Ok::<_, &'static str>(ark::tree::signed::TreeExitFunding::new(
+				Amount::from_sat(f.anchor_sat), Amount::from_sat(f.miner_fee_sat),
+			)?.with_format(format))
+		}).transpose()?;
 		Ok(req)
 	}
 }
@@ -800,6 +806,7 @@ mod test {
 		).unwrap();
 		protos::ArkInfo {
 			exit_profile: ark::exit_policy::PAPERCLIP_EXIT_PROFILE,
+			funded_lightning: false,
 			network: "regtest".into(),
 			server_pubkey: pk.serialize().to_vec(),
 			mailbox_pubkey: pk.serialize().to_vec(),

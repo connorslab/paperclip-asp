@@ -1,0 +1,28 @@
+[Unit]
+Description=Paperclip private pruned-node chain index
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=paperclip-chain
+Group=paperclip-chain
+UMask=0077
+StateDirectory=paperclip-chain
+StateDirectoryMode=0700
+ExecStart=/usr/bin/python3 /opt/paperclip-asp/deployment/pruned_rpc.py --node-url http://127.0.0.1:18334 --node-cookie /etc/paperclip-chain/backend.cookie --client-cookie /etc/paperclip-chain/client.cookie --database /var/lib/paperclip-chain/index.sqlite --first-height 961640
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=512M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

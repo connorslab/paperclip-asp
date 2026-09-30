@@ -1,0 +1,26 @@
+[Unit]
+Description=Paperclip XBT ASP recovery and double-spend protection
+After=network-online.target postgresql.service paperclip-asp.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paperclip-asp
+Group=paperclip-asp
+WorkingDirectory=/opt/paperclip-asp
+EnvironmentFile=/etc/paperclip-asp/environment
+ExecStart=/opt/paperclip-asp/deployment/run-watchman.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=180
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/paperclip-asp
+RestrictSUIDSGID=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

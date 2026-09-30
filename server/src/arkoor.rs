@@ -19,6 +19,8 @@ use crate::{check_max_amount, Server};
 pub(crate) struct ArkoorCosignRequestValidationParams {
 	/// whether checkpoints should be used
 	pub use_checkpoints: bool,
+	/// Only the dedicated outgoing Lightning endpoint may create HTLCs.
+	pub allow_lightning_send: bool,
 	/// maximum number of outputs from a single input
 	pub max_outputs_per_input: usize,
 	/// maximum allowed exit depth (genesis items) of each input VTXO;
@@ -71,13 +73,28 @@ impl Server {
 
 		for (idx, b) in ret.builders.iter().enumerate() {
 			let minimum = bitcoin_ext::P2TR_DUST + ark::exit_policy::paperclip_policy().claim_fee;
-			ensure!(b.all_outputs().all(|o| o.total_amount >= minimum
-				&& matches!(&o.policy, VtxoPolicy::Pubkey(_))), "unrecoverable output");
-			let deadline = u32::try_from(b.input().exit_depth()).context("exit depth overflow")?
-				.checked_add(u32::from(b.input().exit_delta().to_u16()) + 14)
-				.and_then(|v| v.checked_add(self.chain_tip().height.to_u32()))
-				.context("exit deadline overflow")?;
-			ensure!(deadline < b.input().expiry_height().to_u32(), "refresh required before another transfer");
+			let tip = self.chain_tip().height.to_u32();
+			let base = u32::try_from(b.input().exit_depth()).context("exit depth overflow")?
+				.checked_add(2).and_then(|v| v.checked_add(tip)).context("exit deadline overflow")?;
+			for output in b.all_outputs() {
+				let delay = u32::from(b.input().exit_delta().to_u16());
+				let deadline = match &output.policy {
+					VtxoPolicy::Pubkey(_) => {
+						ensure!(output.total_amount >= minimum, "dust recovery output");
+						base.checked_add(delay).context("exit deadline overflow")?
+					},
+					VtxoPolicy::ServerHtlcSend(p) if params.allow_lightning_send => {
+						ensure!(matches!(b.input().policy(), VtxoPolicy::Pubkey(_)), "invalid HTLC source");
+						ensure!(output.total_amount >= minimum + ark::exit_policy::paperclip_funding().per_transaction() * 2,
+							"HTLC cannot fund a cooperative refund");
+						ensure!(p.htlc_expiry.to_u32() < 500_000_000 && delay * 2 <= u16::MAX as u32, "invalid HTLC timelock");
+						base.checked_add(delay * 2).context("refund deadline overflow")?.max(p.htlc_expiry.to_u32())
+					},
+					_ => bail!("output policy not permitted by this endpoint"),
+				};
+				ensure!(deadline.checked_add(12).context("exit deadline overflow")? < b.input().expiry_height().to_u32(),
+					"refresh required before another transfer");
+			}
 			if let Some(max_exit_depth) = params.max_input_exit_depth {
 				let depth = b.input().exit_depth();
 				if depth >= max_exit_depth {
@@ -175,6 +192,7 @@ impl Server {
 
 		let validation = ArkoorCosignRequestValidationParams {
 			use_checkpoints: true,
+			allow_lightning_send: false,
 			max_outputs_per_input: self.config.max_arkoor_fanout,
 			max_input_exit_depth: Some(self.config.max_vtxo_exit_depth),
 		};

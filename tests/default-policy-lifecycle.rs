@@ -5,6 +5,9 @@ use bitcoincore_rpc::RpcApi;
 use ark_testing::{btc, sat, TestContext};
 use ark_testing::constants::ROUND_CONFIRMATIONS;
 use ark_testing::exit::complete_exit;
+use ark_testing::exit::progress_exit_until_awaiting_delta;
+use ark_testing::util::FutureExt;
+use server_log::ProgressBroadcast;
 
 #[tokio::test]
 async fn xbt_lifecycle() {
@@ -12,7 +15,7 @@ async fn xbt_lifecycle() {
 	let relay = ctx.new_bitcoind("independent-relay").await;
 	for node in [ctx.bitcoind().sync_client(), relay.sync_client()] {
 		let info: serde_json::Value = node.call("getmempoolinfo", &[]).unwrap();
-		assert_eq!(info["truc_policy"], "accept");
+		assert_eq!(info["truc_policy"], "reject");
 		assert_eq!(info["minrelaytxfee"].as_f64(), Some(0.00001));
 		assert_eq!(info["dustrelayfee"].as_f64(), Some(0.00003));
 	}
@@ -27,6 +30,12 @@ async fn xbt_lifecycle() {
 	let board_id = alice.vtxo_ids().await[0];
 	let board = alice.raw_vtxo(board_id).await;
 	let mut legacy = board.transactions().next().unwrap().tx;
+	assert_eq!(legacy.version, bitcoin::transaction::Version::TWO);
+	assert!(legacy.output[1].script_pubkey.is_p2wsh());
+	let mut wrong_version = legacy.clone();
+	wrong_version.version = bitcoin::transaction::Version(3);
+	let version_rejected = ctx.bitcoind().sync_client().test_mempool_accept(&[&wrong_version]).unwrap();
+	assert!(!version_rejected[0].allowed);
 	let mut witness = legacy.input[0].witness.to_vec();
 	assert_eq!(witness[0].last(), Some(&0x21));
 	*witness[0].last_mut().unwrap() = 0x01;
@@ -52,6 +61,10 @@ async fn xbt_lifecycle() {
 	// Carol has never had an onchain UTXO to pay for a CPFP child.
 	assert_eq!(carol.onchain_balance().await, Amount::ZERO);
 	let carol_vtxo = carol.raw_vtxo(carol.vtxo_ids().await[0]).await;
+	for step in carol_vtxo.transactions() {
+		assert_eq!(step.tx.version, bitcoin::transaction::Version::TWO);
+		assert!(step.tx.output.last().unwrap().script_pubkey.is_p2wsh());
+	}
 	srv.stop().await.unwrap();
 	carol.start_exit_all().await;
 	carol.progress_exit().await;
@@ -126,4 +139,55 @@ async fn xbt_lifecycle_late_receipt_and_backup() {
 	bob.claim_all_exits(bob.get_onchain_address().await).await;
 	ctx.generate_blocks(1).await;
 	assert!(bob.onchain_balance().await > sat(18_000));
+}
+
+#[tokio::test]
+async fn xbt_lifecycle_watchman_protects_refreshed_and_withdrawn_funds() {
+	for mode in ["round", "offboard-single", "offboard-multi"] {
+		let ctx = TestContext::new(format!("xbt/watchman-{mode}")).await;
+		let srv = ctx.captaind("server").no_vtxo_pool().funded(btc(10))
+			.watchmand_cfg(|cfg| {
+				cfg.watchman.reaction_interval = Duration::from_secs(900);
+				cfg.watchman.sweep_interval = Duration::from_secs(900);
+			}).create().await;
+		let wm = srv.watchmand();
+		ctx.bitcoind().fund_addr(wm.wait_wallet_address().await, sat(1_000_000)).await;
+		let alice = ctx.bark("alice", &srv).funded(sat(1_000_000)).create().await;
+		alice.board_and_confirm_and_register(&ctx, sat(200_000)).await;
+		if mode == "offboard-multi" {
+			alice.board_and_confirm_and_register(&ctx, sat(200_000)).await;
+		}
+		let points = alice.vtxo_ids().await.into_iter().map(|v| v.to_point()).collect::<Vec<_>>();
+		let stale = alice.full_clone("stale").await;
+		if mode == "round" {
+			let bob = ctx.bark("bob", &srv).funded(sat(400_000)).create().await;
+			bob.board_and_confirm_and_register(&ctx, sat(200_000)).await;
+			ctx.refresh_all(&srv, &[&alice, &bob]).await;
+			ctx.generate_blocks(ROUND_CONFIRMATIONS).await;
+		} else {
+			alice.offboard_all(&alice.get_onchain_address().await).await;
+			ctx.generate_blocks(3).await;
+		}
+		stale.start_exit_all().await;
+		progress_exit_until_awaiting_delta(&ctx, &stale).await;
+		let tip = ctx.generate_blocks(wm.config().watchman.progress_grace_period.to_u32()).await;
+		wm.wait_for_sync_height(tip).await;
+		let mut progress = wm.subscribe_log::<ProgressBroadcast>();
+		wm.trigger_sweep().await;
+		let msg = progress.recv().wait_millis(15000).await.expect("watchman did not protect stale exit");
+		let client = ctx.bitcoind().sync_client();
+		for txid in [msg.txid, msg.cpfp_txid] {
+			let tx = client.get_raw_transaction(&txid, None).unwrap();
+			assert_eq!(tx.version, bitcoin::transaction::Version::TWO, "watchman still depends on v3");
+		}
+		for _ in 0..8 {
+			let tip = ctx.generate_blocks(1).await;
+			wm.wait_for_sync_height(tip).await;
+			wm.trigger_sweep().await;
+			tokio::time::sleep(Duration::from_millis(500)).await;
+			if points.iter().all(|p| client.get_tx_out(&p.txid, p.vout, Some(true)).unwrap().is_none()) { break; }
+		}
+		assert!(points.iter().all(|p| client.get_tx_out(&p.txid, p.vout, Some(true)).unwrap().is_none()),
+			"ASP failed to confiscate a stale exit after {mode}");
+	}
 }

@@ -41,6 +41,13 @@ pub fn sign(wallet: &Wallet, psbt: &mut Psbt) -> Result<bool, Error> {
 			return Err(Error::Unsupported);
 		}
 		if let Some(witness) = &input.final_script_witness {
+			// Profile 2 public fee anchor has no signature. Permit only its exact
+			// witness script and matching prevout, not arbitrary unsigned inputs.
+			let anchor = crate::fee::standard_anchor_script();
+			if prevouts[idx].script_pubkey == anchor.to_p2wsh()
+				&& *witness == bitcoin::Witness::from_slice(&[anchor.as_bytes()]) {
+				continue;
+			}
 			if prevouts[idx].script_pubkey == ScriptBuf::new_p2a() && witness.is_empty() {
 				continue;
 			}
@@ -103,6 +110,37 @@ mod tests {
 	use bdk_wallet::test_utils::{insert_checkpoint, receive_output_in_latest_block};
 	use bitcoin::{Amount, BlockHash, Network};
 	use bitcoin::hashes::Hash;
+
+	#[test]
+	fn standard_v2_anchor_signing_checks_exact_witness() {
+		use crate::bdk::TxBuilderExt;
+		let master = bitcoin::bip32::Xpriv::new_master(Network::Regtest, &[43; 32]).unwrap();
+		let mut wallet = Wallet::create(
+			format!("tr({master}/0/*)"), format!("tr({master}/1/*)"))
+			.network(Network::Regtest).create_wallet_no_persist().unwrap();
+		insert_checkpoint(&mut wallet, BlockId { height: 1000, hash: BlockHash::all_zeros() });
+		receive_output_in_latest_block(&mut wallet, Amount::from_sat(100_000));
+		let address = wallet.reveal_next_address(KeychainKind::External).address;
+		let anchor = crate::fee::ExitFormat::StandardV2.anchor(Amount::from_sat(1000));
+		let point = bitcoin::OutPoint::new(bitcoin::Txid::all_zeros(), 0);
+		let mut builder = wallet.build_tx();
+		builder.version(2);
+		builder.only_witness_utxo();
+		builder.add_fee_anchor_spend(point, &anchor);
+		builder.add_recipient(address.script_pubkey(), Amount::from_sat(50_000));
+		builder.fee_absolute(Amount::from_sat(1000));
+		let psbt = builder.finish().unwrap();
+		let index = psbt.unsigned_tx.input.iter().position(|i| i.previous_output == point).unwrap();
+		let mut invalid = psbt.clone();
+		invalid.inputs[index].final_script_witness = Some(bitcoin::Witness::new());
+		assert!(sign(&wallet, &mut invalid).is_err());
+		let mut signed = psbt;
+		assert!(sign(&wallet, &mut signed).unwrap());
+		let tx = signed.extract_tx().unwrap();
+		assert_eq!(tx.version, bitcoin::transaction::Version::TWO);
+		assert_eq!(tx.input[index].witness,
+			bitcoin::Witness::from_slice(&[crate::fee::standard_anchor_script().as_bytes()]));
+	}
 
 	#[test]
 	fn unified_wallet_signs_and_rejects_legacy_request_atomically() {

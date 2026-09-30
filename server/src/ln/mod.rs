@@ -216,6 +216,7 @@ impl Server {
 		}
 
 		let validation = ArkoorCosignRequestValidationParams {
+			allow_lightning_send: true,
 			use_checkpoints: true,
 			max_outputs_per_input: self.config.max_arkoor_fanout,
 			max_input_exit_depth: Some(self.config.max_vtxo_exit_depth),
@@ -431,6 +432,7 @@ impl Server {
 		let cosign_request = cosign_request.set_vtxos(htlc_vtxos)?;
 
 		let validation = ArkoorCosignRequestValidationParams {
+			allow_lightning_send: false,
 			use_checkpoints: true,
 			max_outputs_per_input: 1, // should claim all
 			max_input_exit_depth: None, // recovery op, exempt from the depth limit
@@ -930,6 +932,7 @@ impl Server {
 		// the watchman then stops at the checkpoint instead of force-exiting the claimed leaf.
 		let use_checkpoints = pver >= server_rpc::pver::PROTOCOL_VERSION_LN_RECEIVE_CHECKPOINT;
 		let validation = ArkoorCosignRequestValidationParams {
+			allow_lightning_send: false,
 			use_checkpoints,
 			max_outputs_per_input: 1, // should claim all
 			max_input_exit_depth: None, // recovery op, exempt from the depth limit

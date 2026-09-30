@@ -15,6 +15,7 @@
 
 pub(crate) mod hold;
 pub(crate) mod xpay;
+mod compatibility;
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -128,6 +129,9 @@ impl ClnNodeInfo {
 
 		let network = bitcoin::Network::from_str(info.network.as_str())
 			.context(NodeState::invalid("network invalid"))?;
+
+		compatibility::require_xbt_features(info.our_features.as_ref())
+			.map_err(|message| anyhow::anyhow!(message).context(NodeState::invalid(message)))?;
 
 		if network != expected_network {
 			let msg = format!("network is {network} instead of {expected_network}");

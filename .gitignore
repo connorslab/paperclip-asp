@@ -6,3 +6,5 @@
 *.log
 .env
 *.cookie
+__pycache__/
+*.pyc

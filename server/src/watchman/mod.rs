@@ -48,7 +48,7 @@ use tracing::{info, trace, warn};
 
 use ark::{ServerVtxo, ServerVtxoPolicy, VtxoId};
 use ark::vtxo::policy::signing::VtxoSigner;
-use bitcoin_ext::{fee, BlockHeight, BlockRef, TxStatus, P2TR_DUST};
+use bitcoin_ext::{BlockHeight, BlockRef, TxStatus, TxOutExt, P2TR_DUST};
 use bitcoin_ext::bdk::{WalletExt, KEYCHAIN};
 use bitcoin_ext::cpfp::MakeCpfpFees;
 use bitcoind_async_client::Client as BitcoindClient;
@@ -507,7 +507,7 @@ impl Watchman {
 		if let Ok(tx) = self.bitcoind.get_raw_transaction_verbosity_zero(&txid).await {
 			let tx = tx.0;
 			let is_claim = tx.output.iter()
-				.filter(|o| !o.script_pubkey.is_op_return() && o.script_pubkey != *fee::P2A_SCRIPT)
+				.filter(|o| !o.script_pubkey.is_op_return() && !o.is_fee_anchor())
 				.all(|o| o.script_pubkey == self.drain_spk);
 			if is_claim {
 				return SpendKind::Claim;

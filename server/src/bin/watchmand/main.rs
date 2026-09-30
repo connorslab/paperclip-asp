@@ -18,7 +18,7 @@ const FULL_VERSION: &str = concat!(env!("SERVER_VERSION"), "+", env!("GIT_HASH")
 
 #[derive(Parser)]
 #[command(
-	name = "watchmand",
+	name = "paperclip-watchman",
 	author = "Team Second <hello@second.tech>",
 	version = FULL_VERSION,
 	about = "daemon to run background watcher processes not critical for user-facing operations",

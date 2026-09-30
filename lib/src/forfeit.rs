@@ -24,6 +24,13 @@ pub fn create_hark_forfeit_tx<G>(
 	unlock_hash: UnlockHash,
 	signature: Option<&schnorr::Signature>,
 ) -> Transaction {
+	create_hark_forfeit_tx_with_format(vtxo, unlock_hash, signature, fee::ExitFormat::LegacyV3)
+}
+
+fn create_hark_forfeit_tx_with_format<G>(
+	vtxo: &Vtxo<G>, unlock_hash: UnlockHash, signature: Option<&schnorr::Signature>,
+	format: fee::ExitFormat,
+) -> Transaction {
 	let claim_policy = HarkForfeitVtxoPolicy {
 		user_pubkey: vtxo.user_pubkey(),
 		unlock_hash: unlock_hash,
@@ -34,24 +41,24 @@ pub fn create_hark_forfeit_tx<G>(
 	);
 
 	Transaction {
-		version: bitcoin::transaction::Version(3),
+		version: format.version(),
 		lock_time: bitcoin::absolute::LockTime::ZERO,
 		input: vec![
 			TxIn {
 				previous_output: vtxo.point(),
-				sequence: Sequence::MAX,
+				sequence: if format == fee::ExitFormat::StandardV2 { Sequence::ZERO } else { Sequence::MAX },
 				script_sig: ScriptBuf::new(),
 				witness: signature.map(|s| Witness::from_slice(&[bitcoin_ext::unified::signature(&s)])).unwrap_or_default(),
 			},
 		],
 		output: vec![
 			TxOut {
-				value: vtxo.amount(),
+				value: vtxo.amount() - if format == fee::ExitFormat::StandardV2 { Amount::from_sat(1000) } else { Amount::ZERO },
 				script_pubkey: claim_policy
 					.taproot(vtxo.server_pubkey(), vtxo.exit_delta())
 					.script_pubkey(),
 			},
-			fee::fee_anchor(),
+			format.anchor(if format == fee::ExitFormat::StandardV2 { Amount::from_sat(500) } else { Amount::ZERO }),
 		],
 	}
 }
@@ -60,9 +67,10 @@ pub fn create_hark_forfeit_tx<G>(
 fn hark_forfeit_sighash<G>(
 	vtxo: &Vtxo<G>,
 	unlock_hash: UnlockHash,
+	format: fee::ExitFormat,
 ) -> (TapSighash, Transaction) {
 	let exit_prevout = vtxo.txout();
-	let tx = create_hark_forfeit_tx(vtxo, unlock_hash, None);
+	let tx = create_hark_forfeit_tx_with_format(vtxo, unlock_hash, None, format);
 	let sighash = SighashCache::new(&tx).unified_taproot_key_spend_signature_hash(
 		0, &sighash::Prevouts::All(&[exit_prevout]), TapSighashType::Default,
 	).expect("sighash error");
@@ -78,11 +86,12 @@ fn build_internal_forfeit_vtxo(
 	unlock_hash: UnlockHash,
 	forfeit_tx_sig: schnorr::Signature,
 	forfeit_txid: Option<Txid>,
+	format: fee::ExitFormat,
 ) -> ServerVtxo<Full> {
 	let ff_txid = forfeit_txid.unwrap_or_else(|| {
-		create_hark_forfeit_tx(vtxo, unlock_hash, None).compute_txid()
+		create_hark_forfeit_tx_with_format(vtxo, unlock_hash, None, format).compute_txid()
 	});
-	debug_assert_eq!(ff_txid, create_hark_forfeit_tx(vtxo, unlock_hash, None).compute_txid());
+	debug_assert_eq!(ff_txid, create_hark_forfeit_tx_with_format(vtxo, unlock_hash, None, format).compute_txid());
 
 	Vtxo {
 		point: OutPoint::new(ff_txid, 0),
@@ -90,7 +99,8 @@ fn build_internal_forfeit_vtxo(
 		genesis: Full {
 			items: vtxo.genesis.items.iter().cloned().chain([
 				GenesisItem {
-					miner_fee: Amount::ZERO,
+					exit_format: format,
+					miner_fee: if format == fee::ExitFormat::StandardV2 { Amount::from_sat(500) } else { Amount::ZERO },
 					transition: GenesisTransition::Arkoor(ArkoorGenesis {
 						client_cosigners: vec![vtxo.user_pubkey()],
 						tap_tweak: vtxo.output_taproot().tap_tweak(),
@@ -98,12 +108,12 @@ fn build_internal_forfeit_vtxo(
 					}),
 					output_idx: 0,
 					other_outputs: vec![],
-					fee_amount: Amount::ZERO,
+					fee_amount: if format == fee::ExitFormat::StandardV2 { Amount::from_sat(500) } else { Amount::ZERO },
 				}
 			]).collect(),
 		},
 
-		amount: vtxo.amount,
+		amount: vtxo.amount - if format == fee::ExitFormat::StandardV2 { Amount::from_sat(1000) } else { Amount::ZERO },
 		expiry_height: vtxo.expiry_height,
 		server_pubkey: vtxo.server_pubkey,
 		exit_delta: vtxo.exit_delta,
@@ -115,6 +125,7 @@ fn build_internal_forfeit_vtxo(
 /// conditional on the server revealing a secret preimage
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HashLockedForfeitBundle {
+	pub exit_format: fee::ExitFormat,
 	pub vtxo_id: VtxoId,
 	pub unlock_hash: UnlockHash,
 	pub user_nonce: musig::PublicNonce,
@@ -123,6 +134,13 @@ pub struct HashLockedForfeitBundle {
 }
 
 impl HashLockedForfeitBundle {
+	pub fn new_standard<G>(vtxo: &Vtxo<G>, unlock_hash: UnlockHash,
+		user_key: &Keypair, server_nonce: &musig::PublicNonce,
+	) -> Result<Self, &'static str> {
+		if vtxo.amount() < Amount::from_sat(1330) { return Err("insufficient funded forfeit reserve"); }
+		Ok(Self::new_with_format(vtxo, unlock_hash, user_key, server_nonce, fee::ExitFormat::StandardV2))
+	}
+
 	/// Create a new [HashLockedForfeitBundle] for the given VTXO
 	///
 	/// This is used to forfeit the VTXO to the server conditional on receiving
@@ -133,8 +151,14 @@ impl HashLockedForfeitBundle {
 		user_key: &Keypair,
 		server_nonce: &musig::PublicNonce,
 	) -> Self {
+		Self::new_with_format(vtxo, unlock_hash, user_key, server_nonce, fee::ExitFormat::LegacyV3)
+	}
+
+	fn new_with_format<G>(vtxo: &Vtxo<G>, unlock_hash: UnlockHash,
+		user_key: &Keypair, server_nonce: &musig::PublicNonce, exit_format: fee::ExitFormat,
+	) -> Self {
 		let vtxo_exit_taproot = vtxo.output_taproot();
-		let (ff_sighash, _) = hark_forfeit_sighash(vtxo, unlock_hash);
+		let (ff_sighash, _) = hark_forfeit_sighash(vtxo, unlock_hash, exit_format);
 		let (ff_sec_nonce, ff_pub_nonce) = musig::nonce_pair_with_msg(
 			user_key, &ff_sighash.to_byte_array(),
 		);
@@ -150,6 +174,7 @@ impl HashLockedForfeitBundle {
 		);
 
 		Self {
+			exit_format,
 			vtxo_id: vtxo.id(),
 			unlock_hash: unlock_hash,
 			user_nonce: ff_pub_nonce,
@@ -164,6 +189,9 @@ impl HashLockedForfeitBundle {
 		vtxo: &Vtxo<G>,
 		server_nonce: &musig::PublicNonce,
 	) -> Result<(), &'static str> {
+		if self.exit_format == fee::ExitFormat::StandardV2 && vtxo.amount() < Amount::from_sat(1330) {
+			return Err("insufficient funded forfeit reserve");
+		}
 		if vtxo.id() != self.vtxo_id {
 			return Err("VTXO mismatch");
 		}
@@ -172,7 +200,7 @@ impl HashLockedForfeitBundle {
 			&[&self.user_nonce, &server_nonce],
 		);
 		let vtxo_exit_taproot = vtxo.output_taproot();
-		let (ff_sighash, _) = hark_forfeit_sighash(vtxo, self.unlock_hash);
+		let (ff_sighash, _) = hark_forfeit_sighash(vtxo, self.unlock_hash, self.exit_format);
 		let (ff_key_agg, _) = musig::tweaked_key_agg(
 			[vtxo.user_pubkey(), vtxo.server_pubkey()],
 			vtxo_exit_taproot.tap_tweak().to_byte_array(),
@@ -208,7 +236,7 @@ impl HashLockedForfeitBundle {
 			&[&self.user_nonce, &server_pub_nonce],
 		);
 		let vtxo_exit_taproot = vtxo.output_taproot();
-		let (ff_sighash, mut ff_tx) = hark_forfeit_sighash(vtxo, self.unlock_hash);
+		let (ff_sighash, mut ff_tx) = hark_forfeit_sighash(vtxo, self.unlock_hash, self.exit_format);
 		let (_ff_part_sig, ff_sig) = musig::partial_sign(
 			[vtxo.user_pubkey(), vtxo.server_pubkey()],
 			ff_agg_nonce,
@@ -242,21 +270,22 @@ impl HashLockedForfeitBundle {
 
 		// fill in the signature in the tx
 		ff_tx.input[0].witness = Witness::from_slice(&[bitcoin_ext::unified::signature(&ff_sig)]);
-		debug_assert_eq!(ff_tx, create_hark_forfeit_tx(vtxo, self.unlock_hash, Some(&ff_sig)));
+		debug_assert_eq!(ff_tx, create_hark_forfeit_tx_with_format(vtxo, self.unlock_hash, Some(&ff_sig), self.exit_format));
 
 		let ff_txid = ff_tx.compute_txid();
-		let ff_vtxo = build_internal_forfeit_vtxo(vtxo, self.unlock_hash, ff_sig, Some(ff_txid));
+		let ff_vtxo = build_internal_forfeit_vtxo(vtxo, self.unlock_hash, ff_sig, Some(ff_txid), self.exit_format);
 
 		(ff_sig, ff_tx, ff_vtxo)
 	}
 }
 
 /// The serialization version of [HashLockedForfeitBundle].
-const HASH_LOCKED_FORFEIT_BUNDLE_VERSION: u8 = 0x01;
+const HASH_LOCKED_FORFEIT_BUNDLE_VERSION: u8 = 0x02;
 
 impl ProtocolEncoding for HashLockedForfeitBundle {
 	fn encode<W: std::io::Write + ?Sized>(&self, w: &mut W) -> Result<(), std::io::Error> {
 		w.emit_u8(HASH_LOCKED_FORFEIT_BUNDLE_VERSION)?;
+		w.emit_u8(self.exit_format.code())?;
 		self.vtxo_id.encode(w)?;
 		self.unlock_hash.encode(w)?;
 		self.user_nonce.encode(w)?;
@@ -266,10 +295,14 @@ impl ProtocolEncoding for HashLockedForfeitBundle {
 
 	fn decode<R: std::io::Read + ?Sized>(r: &mut R) -> Result<Self, ProtocolDecodingError> {
 		let ver = r.read_u8()?;
-		if ver != HASH_LOCKED_FORFEIT_BUNDLE_VERSION {
+		if ver != 1 && ver != HASH_LOCKED_FORFEIT_BUNDLE_VERSION {
 			return Err(ProtocolDecodingError::invalid("unknown encoding version"));
 		}
+		let exit_format = if ver >= 2 {
+			fee::ExitFormat::from_code(r.read_u8()?).map_err(ProtocolDecodingError::invalid)?
+		} else { fee::ExitFormat::LegacyV3 };
 		Ok(Self {
+			exit_format,
 			vtxo_id: ProtocolEncoding::decode(r)?,
 			unlock_hash: ProtocolEncoding::decode(r)?,
 			user_nonce: ProtocolEncoding::decode(r)?,
@@ -376,7 +409,7 @@ mod test {
 		// finish it which triggers debug asserts on partial sigs
 		let (sig, tx, _vtxo) = bundle.finish(vtxo, server_pub_nonce, server_sec_nonce, &VTXO_VECTORS.server_key);
 
-		let (ff_sighash, ff_tx) = hark_forfeit_sighash(vtxo, unlock_hash);
+		let (ff_sighash, ff_tx) = hark_forfeit_sighash(vtxo, unlock_hash, fee::ExitFormat::LegacyV3);
 		SECP.verify_schnorr(
 			&sig,
 			&ff_sighash.into(),
@@ -390,6 +423,25 @@ mod test {
 		assert_eq!(ff_tx_expected, tx);
 		verify_tx(&[ff_input], 0, &ff_tx_expected).expect("forfeit tx error");
 		assert_eq!(ff_tx_expected.compute_txid(), ff_point.txid);
+	}
+
+	#[test]
+	fn standard_v2_forfeit_roundtrip_and_reconstruction() {
+		let vtxo = &VTXO_VECTORS.arkoor3_vtxo;
+		let (secret, public) = musig::nonce_pair(&VTXO_VECTORS.server_key);
+		let hash = UnlockHash::hash(&[17; 32]);
+		let bundle = HashLockedForfeitBundle::new_standard(vtxo, hash,
+			&VTXO_VECTORS.arkoor3_user_key, &public).unwrap();
+		let encoded = bundle.serialize();
+		assert_eq!(bundle, HashLockedForfeitBundle::deserialize(&encoded).unwrap());
+		assert!(bundle.verify(vtxo, &public).is_ok());
+		let (_, tx, internal) = bundle.finish(vtxo, &public, secret, &VTXO_VECTORS.server_key);
+		assert_eq!(tx.version, bitcoin::transaction::Version::TWO);
+		assert_eq!(vtxo.amount() - tx.output.iter().map(|o| o.value).sum::<Amount>(), Amount::from_sat(500));
+		assert!(tx.output.iter().all(|o| o.value >= o.script_pubkey.minimal_non_dust()));
+		assert_eq!(internal.transactions().last().unwrap().tx, tx);
+		assert_eq!(internal.amount(), vtxo.amount() - Amount::from_sat(1000));
+		for n in 0..encoded.len() { assert!(HashLockedForfeitBundle::deserialize(&encoded[..n]).is_err()); }
 	}
 
 	#[test]

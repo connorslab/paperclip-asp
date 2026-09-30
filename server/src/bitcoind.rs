@@ -20,7 +20,7 @@ use bitcoind_async_client::Client;
 use bitcoind_async_client::error::ClientError;
 use bitcoind_async_client::traits::{Broadcaster, Reader};
 use bitcoin_ext::rpc::{
-	self, Auth, GetRawTransactionResult, RPC_INVALID_ADDRESS_OR_KEY,
+	self, Auth, BitcoinAsyncRpcExt, GetRawTransactionResult, RPC_INVALID_ADDRESS_OR_KEY,
 	RPC_VERIFY_ALREADY_IN_UTXO_SET, SubmitPackageResult,
 };
 use bitcoin_ext::{BlockHeight, BlockRef, DEEPLY_CONFIRMED, TxStatus};
@@ -254,9 +254,7 @@ pub async fn require_network(client: &Client, expected: Network) -> anyhow::Resu
 	let network = client.network().await
 		.context("failed to query network from bitcoind")?;
 	if expected == Network::Bitcoin {
-		let indexes: serde_json::Value = client.call_raw("getindexinfo", &[]).await?;
-		anyhow::ensure!(indexes["txindex"]["synced"].as_bool() == Some(true),
-			"XBT mainnet requires an enabled, synchronized transaction index");
+		client.require_txindex().await.context("XBT transaction history is not ready")?;
 		let chain: serde_json::Value = client.call_raw("getblockchaininfo", &[]).await?;
 		anyhow::ensure!(chain["initialblockdownload"].as_bool() == Some(false),
 			"XBT mainnet backend must finish synchronization before use");

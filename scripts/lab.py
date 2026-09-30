@@ -16,7 +16,7 @@ import tomllib
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-STATE = ROOT / '.state' / 'lab'
+STATE = ROOT / '.state' / 'lab-profile2'
 RPC_PORT, ASP_PORT, ADMIN_PORT, WEB_PORT = 38443, 38535, 38536, 38180
 EXPECTED_KNOTS = 'd04cd8211e711af989a7a62d0b8b55a8cfe496694392518da0ccb848469b3799'
 CHILDREN = []
@@ -107,7 +107,7 @@ def main():
     start([node, '-regtest', f'-datadir={STATE / "chain"}', '-server', f'-rpcport={RPC_PORT}',
         '-rpcbind=127.0.0.1', '-listen=0', '-connect=0', '-dnsseed=0', '-discover=0',
         '-listenonion=0', '-natpmp=0', '-upnp=0', '-testactivationheight=blake2b@100',
-        '-acceptnonstdtxn=0', '-mempooltruc=enforce', '-subdustfeepenalty=0',
+        '-acceptnonstdtxn=0', '-mempooltruc=reject',
         '-fallbackfee=0.00002', '-dbcache=64', '-par=1', '-txindex=1'], 'knots')
     wait(lambda: rpc('getblockchaininfo')['chain'] == 'regtest')
     if 'faucet' not in rpc('listwallets'):

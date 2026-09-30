@@ -124,7 +124,9 @@ message ArkInfo {
 
 	uint32 exit_profile = 23;
 
-	// last index: 23
+	bool funded_lightning = 24;
+
+	// last index: 24
 }
 
 message OffboardFeeRateResponse {
@@ -253,6 +255,7 @@ message ArkoorDestination {
 message ExitFunding {
 	uint64 anchor_sat = 1;
 	uint64 miner_fee_sat = 2;
+	uint32 exit_format = 3;
 }
 
 message ArkoorCosignRequest {

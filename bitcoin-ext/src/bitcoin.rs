@@ -52,6 +52,11 @@ pub trait TxOutExt: Borrow<TxOut> {
 		self.borrow().script_pubkey == *fee::P2A_SCRIPT
 	}
 
+	fn is_fee_anchor(&self) -> bool {
+		self.is_p2a_fee_anchor()
+			|| self.borrow().script_pubkey == fee::standard_anchor_script().to_p2wsh()
+	}
+
 	/// Basic standardness check. Might be too strict.
 	fn is_standard(&self) -> bool {
 		self.check_standard().is_ok()
@@ -99,7 +104,7 @@ pub trait TransactionExt: Borrow<Transaction> {
 	/// Only the first fee anchor is returned.
 	fn fee_anchor(&self) -> Option<(OutPoint, &TxOut)> {
 		for (i, out) in self.borrow().output.iter().enumerate() {
-			if out.is_p2a_fee_anchor() {
+			if out.is_fee_anchor() {
 				let point = OutPoint::new(self.borrow().compute_txid(), i as u32);
 				return Some((point, out));
 			}

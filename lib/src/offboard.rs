@@ -38,6 +38,19 @@ pub const OFFBOARD_TX_OFFBOARD_VOUT: usize = 0;
 pub const OFFBOARD_TX_CONNECTOR_VOUT: usize = 1;
 
 /// Additional number of blocks after the input VTXO expiry we wait to sweep connectors
+/// Profile 2 connector covers a 500-sat fee, 500-sat public anchor and 330-sat continuation.
+const STANDARD_CONNECTOR_VALUE: Amount = Amount::from_sat(1330);
+
+pub fn standard_connector_budget(count: usize) -> Option<Amount> {
+	if count == 0 { return None; }
+	let count = u64::try_from(count).ok()?;
+	let leaves = STANDARD_CONNECTOR_VALUE.checked_mul(count)?;
+	if count == 1 { Some(leaves) } else {
+		// Covers 43 vbytes per output plus overhead at the admitted 1 sat/vB.
+		leaves.checked_add(Amount::from_sat(count.checked_mul(50)?.checked_add(2000)?))
+	}
+}
+
 const CONNECTOR_EXPIRY_DELTA: BlockDelta = BlockDelta::new(144);
 
 
@@ -189,6 +202,7 @@ impl OffboardForfeitResult {
 }
 
 pub struct OffboardForfeitContext<'a, V> {
+	exit_format: fee::ExitFormat,
 	input_vtxos: &'a [V],
 	offboard_tx: &'a Transaction,
 }
@@ -210,7 +224,25 @@ impl<'a, V> OffboardForfeitContext<'a, V> {
 		if input_vtxos.is_empty() {
 			return Err(OffboardForfeitError::NoInputs);
 		}
-		Ok(Self { input_vtxos, offboard_tx })
+		let exit_format = if offboard_tx.output.get(OFFBOARD_TX_CONNECTOR_VOUT)
+			.map(|o| o.value) == standard_connector_budget(input_vtxos.len()) {
+			fee::ExitFormat::StandardV2
+		} else { fee::ExitFormat::LegacyV3 };
+		Ok(Self { input_vtxos, offboard_tx, exit_format })
+	}
+
+	fn connector_value(&self) -> Amount {
+		if self.exit_format == fee::ExitFormat::StandardV2 { STANDARD_CONNECTOR_VALUE } else { P2TR_DUST }
+	}
+
+	fn connector_fanout(&self, prev: OutPoint, spk: &bitcoin::Script) -> Transaction {
+		let mut tx = construct_multi_connector_fanout_tx(prev, self.input_vtxos.len(), spk);
+		if self.exit_format == fee::ExitFormat::StandardV2 {
+			tx.version = bitcoin::transaction::Version::TWO;
+			for out in tx.output.iter_mut().take(self.input_vtxos.len()) { out.value = STANDARD_CONNECTOR_VALUE; }
+			*tx.output.last_mut().expect("fanout has an anchor") = self.exit_format.anchor(Amount::from_sat(1000));
+		}
+		tx
 	}
 
 	/// Validate offboard tx matches offboard request
@@ -239,7 +271,9 @@ impl<'a, V> OffboardForfeitContext<'a, V> {
 		// for the user we only need to check that there are enough connectors
 		let conn_txout = self.offboard_tx.output.get(OFFBOARD_TX_CONNECTOR_VOUT)
 			.ok_or("missing connector output")?;
-		let required_conn_value = P2TR_DUST * self.input_vtxos.len() as u64;
+		let required_conn_value = if self.exit_format == fee::ExitFormat::StandardV2 {
+			standard_connector_budget(self.input_vtxos.len()).ok_or("connector budget overflow")?
+		} else { P2TR_DUST.checked_mul(self.input_vtxos.len() as u64).ok_or("connector budget overflow")? };
 		if conn_txout.value != required_conn_value {
 			return Err(format!(
 				"insufficient connector amount: got={}, need={}",
@@ -296,9 +330,8 @@ where
 			// here we will create a deterministic intermediate connector tx and
 			// sign forfeit txs with the outputs of that tx
 
-			let connector_tx = construct_multi_connector_fanout_tx(
+			let connector_tx = self.connector_fanout(
 				connector_fanout_prev,
-				self.input_vtxos.len(),
 				&connector_fanout_txout.script_pubkey,
 			);
 			let connector_txid = connector_tx.compute_txid();
@@ -309,7 +342,7 @@ where
 			// must use the actual connector tx output here.
 			let connector_txout = TxOut {
 				script_pubkey: connector_fanout_txout.script_pubkey.clone(),
-				value: P2TR_DUST,
+				value: self.connector_value(),
 			};
 			let iter = self.input_vtxos.iter().zip(keys).zip(server_nonces);
 			for (i, ((vtxo, key), server_nonce)) in iter.enumerate() {
@@ -377,15 +410,14 @@ where
 			).ok_or_else(|| InvalidUserPartialSignatureError { vtxo: vtxo.id() })?;
 			ret.forfeit_vtxos = vec![construct_forfeit_vtxo(vtxo, &tx)];
 			ret.forfeit_txs.push(tx);
-			ret.connector_vtxos = vec![construct_connector_vtxo_single(vtxo, offboard_txid)];
+			ret.connector_vtxos = vec![construct_connector_vtxo_single(vtxo, offboard_txid, connector_fanout_txout.value)];
 		} else {
 			// here we will create a deterministic intermediate connector tx and
 			// sign forfeit txs with the outputs of that tx
 
 			let connector_tx = {
-				let mut tx = construct_multi_connector_fanout_tx(
+				let mut tx = self.connector_fanout(
 					connector_fanout_prev,
-					self.input_vtxos.len(),
 					&connector_fanout_txout.script_pubkey,
 				);
 
@@ -410,7 +442,7 @@ where
 				offboard_txid,
 				self.input_vtxos.iter().map(|v| v.as_ref().expiry_height()).max().unwrap(),
 				self.input_vtxos[0].as_ref().server_pubkey(), // should be the same, any will do
-				self.input_vtxos.len(),
+				connector_fanout_txout.value,
 			));
 
 			// The forfeit txs spend the connector tx's outputs, which carry a
@@ -419,7 +451,7 @@ where
 			// must use the actual connector tx output here.
 			let connector_txout = TxOut {
 				script_pubkey: connector_fanout_txout.script_pubkey.clone(),
-				value: P2TR_DUST,
+				value: self.connector_value(),
 			};
 			let iter = self.input_vtxos.iter()
 				.zip(server_pub_nonces)
@@ -443,7 +475,7 @@ where
 				ret.forfeit_vtxos.push(construct_forfeit_vtxo(vtxo, &tx));
 				ret.forfeit_txs.push(tx);
 				ret.connector_vtxos.push(construct_connector_vtxo_fanout_leaf(
-					vtxo, i, offboard_txid, connector_txid,
+					vtxo, i, offboard_txid, connector_txid, self.connector_value(),
 				));
 			}
 		}
@@ -476,6 +508,7 @@ fn construct_forfeit_vtxo<G>(
 fn construct_connector_vtxo_single<G>(
 	input: &Vtxo<G>,
 	offboard_txid: Txid,
+	value: Amount,
 ) -> ServerVtxo<Bare> {
 	let point = OutPoint::new(offboard_txid, 1);
 	ServerVtxo {
@@ -483,7 +516,7 @@ fn construct_connector_vtxo_single<G>(
 		anchor_point: point.clone(),
 		point: point,
 		policy: ServerVtxoPolicy::ServerOwned,
-		amount: P2TR_DUST,
+		amount: value,
 		server_pubkey: input.server_pubkey,
 		expiry_height: input.expiry_height + CONNECTOR_EXPIRY_DELTA,
 		exit_delta: BlockDelta::ZERO,
@@ -499,7 +532,7 @@ fn construct_connector_vtxo_fanout_root(
 	offboard_txid: Txid,
 	max_expiry_height: BlockHeight,
 	server_pubkey: PublicKey,
-	nb_vtxos: usize,
+	value: Amount,
 ) -> ServerVtxo<Bare> {
 	let point = OutPoint::new(offboard_txid, 1);
 	ServerVtxo {
@@ -507,8 +540,7 @@ fn construct_connector_vtxo_fanout_root(
 		anchor_point: point.clone(),
 		point: point,
 		policy: ServerVtxoPolicy::ServerOwned,
-		amount: P2TR_DUST.checked_mul(nb_vtxos as u64)
-			.expect("P2TR_DUST * nb_vtxos fits in u64 by VTXO-count and dust bounds"),
+		amount: value,
 		server_pubkey: server_pubkey,
 		expiry_height: max_expiry_height + CONNECTOR_EXPIRY_DELTA,
 		exit_delta: BlockDelta::ZERO,
@@ -524,12 +556,13 @@ fn construct_connector_vtxo_fanout_leaf<G>(
 	input_idx: usize,
 	offboard_txid: Txid,
 	connector_txid: Txid,
+	value: Amount,
 ) -> ServerVtxo<Bare> {
 	ServerVtxo {
 		point: OutPoint::new(connector_txid, u32::try_from(input_idx).expect("input index fits in u32")),
 		anchor_point: OutPoint::new(offboard_txid, 1),
 		policy: ServerVtxoPolicy::ServerOwned,
-		amount: P2TR_DUST,
+		amount: value,
 		server_pubkey: input.server_pubkey,
 		expiry_height: input.expiry_height + CONNECTOR_EXPIRY_DELTA,
 		exit_delta: BlockDelta::ZERO,
@@ -544,7 +577,7 @@ fn user_sign_vtxo_forfeit_input<G: Sync + Send>(
 	connector_txout: &TxOut,
 	server_nonce: &musig::PublicNonce,
 ) -> (musig::PublicNonce, musig::PartialSignature) {
-	let tx = create_offboard_forfeit_tx(vtxo, connector, None, None);
+	let tx = create_offboard_forfeit_tx(vtxo, connector, connector_txout.value, None, None);
 	let mut shc = SighashCache::new(&tx);
 	let prevouts = [&vtxo.txout(), &connector_txout];
 	let sighash = shc.unified_taproot_key_spend_signature_hash(
@@ -592,7 +625,7 @@ fn server_check_finalize_forfeit_tx<G: Sync + Send>(
 	user_nonce: &musig::PublicNonce,
 	user_partial_sig: &musig::PartialSignature,
 ) -> Option<Transaction> {
-	let mut tx = create_offboard_forfeit_tx(vtxo, connector, None, None);
+	let mut tx = create_offboard_forfeit_tx(vtxo, connector, connector_txout.value, None, None);
 	let mut shc = SighashCache::new(&tx);
 	let prevouts = [&vtxo.txout(), &connector_txout];
 	let vtxo_sig = {
@@ -648,7 +681,7 @@ fn server_check_finalize_forfeit_tx<G: Sync + Send>(
 	tx.input[0].witness = Witness::from_slice(&[bitcoin_ext::unified::signature(&vtxo_sig)]);
 	tx.input[1].witness = Witness::from_slice(&[bitcoin_ext::unified::signature(&conn_sig)]);
 	debug_assert_eq!(tx,
-		create_offboard_forfeit_tx(vtxo, connector, Some(&vtxo_sig), Some(&conn_sig)),
+		create_offboard_forfeit_tx(vtxo, connector, connector_txout.value, Some(&vtxo_sig), Some(&conn_sig)),
 	);
 
 	#[cfg(test)]
@@ -666,11 +699,13 @@ fn server_check_finalize_forfeit_tx<G: Sync + Send>(
 fn create_offboard_forfeit_tx<G: Sync + Send>(
 	vtxo: &Vtxo<G>,
 	connector: OutPoint,
+	connector_value: Amount,
 	vtxo_sig: Option<&schnorr::Signature>,
 	conn_sig: Option<&schnorr::Signature>,
 ) -> Transaction {
+	let format = if connector_value == STANDARD_CONNECTOR_VALUE { fee::ExitFormat::StandardV2 } else { fee::ExitFormat::LegacyV3 };
 	Transaction {
-		version: bitcoin::transaction::Version(3),
+		version: format.version(),
 		lock_time: bitcoin::absolute::LockTime::ZERO,
 		input: vec![
 			TxIn {
@@ -694,7 +729,7 @@ fn create_offboard_forfeit_tx<G: Sync + Send>(
 					&*SECP, vtxo.server_pubkey().x_only_public_key().0, None,
 				),
 			},
-			fee::fee_anchor(),
+			format.anchor(if format == fee::ExitFormat::StandardV2 { Amount::from_sat(500) } else { Amount::ZERO }),
 		],
 	}
 }
@@ -706,6 +741,33 @@ mod test {
 	use bitcoin::secp256k1::PublicKey;
 	use crate::test_util::dummy::{random_utxo, DummyTestVtxoSpec};
 	use super::*;
+
+	#[test]
+	fn standard_v2_connector_budgets_and_legacy_selection() {
+		let key = Keypair::new(&*SECP, &mut bitcoin::secp256k1::rand::thread_rng());
+		let spk = ScriptBuf::new_p2tr(&SECP, key.x_only_public_key().0, None);
+		for count in [1, 2, 10, 100] {
+			let inputs = vec![(); count];
+			let budget = standard_connector_budget(count).unwrap();
+			let tx = Transaction { version: bitcoin::transaction::Version::TWO,
+				lock_time: bitcoin::absolute::LockTime::ZERO, input: vec![],
+				output: vec![TxOut { value: Amount::from_sat(10_000), script_pubkey: spk.clone() },
+					TxOut { value: budget, script_pubkey: spk.clone() }] };
+			let ctx = OffboardForfeitContext::new(&inputs, &tx).unwrap();
+			assert_eq!(ctx.exit_format, fee::ExitFormat::StandardV2);
+			if count > 1 {
+				let fanout = ctx.connector_fanout(OutPoint::null(), &spk);
+				assert_eq!(fanout.version, bitcoin::transaction::Version::TWO);
+				assert_eq!(budget - fanout.output.iter().map(|o| o.value).sum::<Amount>(),
+					Amount::from_sat(1000 + count as u64 * 50));
+			}
+			let mut legacy = tx;
+			legacy.output[1].value = P2TR_DUST * count as u64;
+			assert_eq!(OffboardForfeitContext::new(&inputs, &legacy).unwrap().exit_format, fee::ExitFormat::LegacyV3);
+		}
+		assert!(standard_connector_budget(0).is_none());
+		assert!(standard_connector_budget(usize::MAX).is_none());
+	}
 
 	#[test]
 	fn test_offboard_forfeit() {

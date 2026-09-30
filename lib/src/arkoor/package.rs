@@ -113,26 +113,87 @@ impl ArkoorPackageBuilder<state::Initial> {
 	pub fn new_funded_payment(
 		inputs: Vec<Vtxo<Full>>, destination: ArkoorDestination, change_policy: VtxoPolicy,
 	) -> Result<(Self, Amount), ArkoorConstructionError> {
+		if !matches!(&destination.policy, VtxoPolicy::Pubkey(_)) {
+			return Err(ArkoorConstructionError::IncompatibleExitFunding);
+		}
+		Self::new_funded_destination(inputs, destination, change_policy)
+	}
+
+	/// Preserve the invoice amount while charging recovery reserves to the sender.
+	/// The caller must also check HTLC deadlines before requesting signatures.
+	pub fn new_funded_lightning_send(
+		inputs: Vec<Vtxo<Full>>, destination: ArkoorDestination, change_policy: VtxoPolicy,
+	) -> Result<(Self, Amount), ArkoorConstructionError> {
+		if !matches!(&destination.policy, VtxoPolicy::ServerHtlcSend(_)) {
+			return Err(ArkoorConstructionError::IncompatibleExitFunding);
+		}
+		Self::new_funded_destination(inputs, destination, change_policy)
+	}
+
+	/// Allocate pool liquidity to a current incoming HTLC, preserving its amount.
+	pub fn new_funded_lightning_receive(
+		inputs: Vec<Vtxo<Full>>, destination: ArkoorDestination, change_policy: VtxoPolicy,
+	) -> Result<(Self, Amount), ArkoorConstructionError> {
+		if !matches!(&destination.policy, VtxoPolicy::ServerHtlcRecv(_)) {
+			return Err(ArkoorConstructionError::IncompatibleExitFunding);
+		}
+		Self::new_funded_destination(inputs, destination, change_policy)
+	}
+
+	/// Cooperatively claim or refund current HTLCs into ordinary balances.
+	/// Each input pays for its checkpoint and claim transaction. No legacy path
+	/// is rewritten, and the returned reserve must be recorded in the movement.
+	pub fn new_funded_lightning_claim(
+		inputs: Vec<Vtxo<Full>>, output_policy: VtxoPolicy,
+	) -> Result<(Self, Amount), ArkoorConstructionError> {
+		if inputs.is_empty() { return Err(ArkoorConstructionError::NoOutputs); }
+		if !matches!(&output_policy, VtxoPolicy::Pubkey(_)) {
+			return Err(ArkoorConstructionError::IncompatibleExitFunding);
+		}
+		let funding = crate::exit_policy::paperclip_funding();
+		let reserve = funding.per_transaction() * 2;
+		let floor = bitcoin_ext::P2TR_DUST + crate::exit_policy::paperclip_policy().claim_fee;
+		let mut builders = Vec::with_capacity(inputs.len());
+		let mut fees = Amount::ZERO;
+		for input in inputs {
+			if !matches!(input.policy(), VtxoPolicy::ServerHtlcSend(_) | VtxoPolicy::ServerHtlcRecv(_)) {
+				return Err(ArkoorConstructionError::IncompatibleExitFunding);
+			}
+			let amount = input.amount().checked_sub(reserve).filter(|a| *a >= floor)
+				.ok_or(ArkoorConstructionError::Dust)?;
+			builders.push(ArkoorBuilder::new_funded(input, vec![ArkoorDestination {
+				total_amount: amount, policy: output_policy.clone(),
+			}], true, funding)?);
+			fees = fees.checked_add(reserve).ok_or(ArkoorConstructionError::Overflow)?;
+		}
+		Ok((Self { builders }, fees))
+	}
+
+	fn new_funded_destination(
+		inputs: Vec<Vtxo<Full>>, destination: ArkoorDestination, change_policy: VtxoPolicy,
+	) -> Result<(Self, Amount), ArkoorConstructionError> {
 		let funding = crate::exit_policy::paperclip_funding();
 		let reserve = funding.per_transaction();
 		let floor = bitcoin_ext::P2TR_DUST + crate::exit_policy::paperclip_policy().claim_fee;
-		if destination.total_amount < floor { return Err(ArkoorConstructionError::Dust); }
+		let destination_floor = if matches!(&destination.policy, VtxoPolicy::Pubkey(_)) {
+			floor
+		} else { floor + reserve * 2 };
+		if destination.total_amount < destination_floor { return Err(ArkoorConstructionError::Dust); }
 		let mut remaining = destination.total_amount;
 		let mut fees = Amount::ZERO;
 		let mut builders = Vec::new();
 		for input in inputs {
 			let available = input.amount().checked_sub(reserve * 2)
 				.ok_or(ArkoorConstructionError::Dust)?;
-			if remaining == Amount::ZERO || available < floor {
+			if remaining == Amount::ZERO || available < destination_floor {
 				return Err(ArkoorConstructionError::Dust);
 			}
 			if !matches!(input.policy(), VtxoPolicy::Pubkey(_))
-				|| !matches!(&destination.policy, VtxoPolicy::Pubkey(_))
 				|| !matches!(&change_policy, VtxoPolicy::Pubkey(_)) {
 				return Err(ArkoorConstructionError::IncompatibleExitFunding);
 			}
 			let pay = remaining.min(available);
-			if pay < floor { return Err(ArkoorConstructionError::Dust); }
+			if pay < destination_floor { return Err(ArkoorConstructionError::Dust); }
 			let mut outputs = vec![ArkoorDestination {
 				total_amount: pay, policy: destination.policy.clone(),
 			}];
@@ -582,9 +643,10 @@ mod test {
 		let point = bitcoin::OutPoint::new(funding.compute_txid(), old.chain_anchor().vout);
 		let builder = crate::board::BoardBuilder::new(alice_public_key(), old.expiry_height(),
 			server_keypair().public_key(), old.exit_delta())
+			.with_exit_format(profile.format())
 			.set_funded_funding_details(amount + profile.per_transaction(), profile.anchor(), profile.miner_fee(), point)
 			.unwrap().generate_user_nonces();
-		let server = crate::board::BoardBuilder::new_for_funded_cosign(alice_public_key(), old.expiry_height(),
+		let server = crate::board::BoardBuilder::new_for_standard_cosign(alice_public_key(), old.expiry_height(),
 			server_keypair().public_key(), old.exit_delta(), amount + profile.per_transaction(),
 			profile.anchor(), profile.miner_fee(), point, *builder.user_pub_nonce()).unwrap();
 		let vtxo = builder.build_vtxo(&server.server_cosign(&server_keypair()), &alice_keypair()).unwrap();
@@ -627,6 +689,94 @@ mod test {
 		assert!(ArkoorPackageBuilder::new_funded_payment(vec![legacy], ArkoorDestination {
 			total_amount: Amount::from_sat(10_000), policy: VtxoPolicy::new_pubkey(bob_public_key()),
 		}, VtxoPolicy::new_pubkey(alice_public_key())).is_err());
+	}
+
+	#[test]
+	fn funded_lightning_refund_preserves_amount_and_checks_deadlines() {
+		let (funding, input) = funded_test_input(Amount::from_sat(100_000));
+		let preimage = crate::lightning::Preimage::random();
+		let destination = ArkoorDestination { total_amount: Amount::from_sat(10_000),
+			policy: VtxoPolicy::new_server_htlc_send(alice_public_key(),
+				preimage.compute_payment_hash(), BlockHeight::new(400)),
+		};
+		assert!(ArkoorPackageBuilder::new_funded_payment(vec![input.clone()], destination.clone(),
+			VtxoPolicy::new_pubkey(alice_public_key())).is_err());
+		let (builder, reserve) = ArkoorPackageBuilder::new_funded_lightning_send(vec![input],
+			destination, VtxoPolicy::new_pubkey(alice_public_key())).unwrap();
+		assert_eq!(reserve.to_sat(), 6000);
+		let outputs = builder.cosign_both(&[alice_keypair()], &server_keypair()).unwrap().build_signed_vtxos();
+		let htlc = outputs.iter().find(|v| matches!(v.policy(), VtxoPolicy::ServerHtlcSend(_))).unwrap();
+		assert_eq!(htlc.amount().to_sat(), 10_000);
+		let policy = crate::exit_policy::paperclip_policy();
+		policy.check_lightning_send(htlc, &funding, BlockHeight::new(100)).unwrap();
+		assert!(policy.check(htlc, &funding, BlockHeight::new(100)).is_err());
+		// 729 + three ancestors + 256 CSV blocks + 12 safety blocks = expiry.
+		assert!(policy.check_lightning_send(htlc, &funding, BlockHeight::new(729)).is_err());
+		let (refund, reserve) = ArkoorPackageBuilder::new_funded_lightning_claim(vec![htlc.clone()],
+			VtxoPolicy::new_pubkey(alice_public_key())).unwrap();
+		assert_eq!(reserve.to_sat(), 4000);
+		let refunded = refund.cosign_both(&[alice_keypair()], &server_keypair()).unwrap().build_signed_vtxos();
+		assert_eq!(refunded[0].amount().to_sat(), 6000);
+		policy.check(&refunded[0], &funding, BlockHeight::new(100)).unwrap();
+	}
+
+	#[test]
+	fn funded_lightning_multi_input_preserves_payment_and_refund_reserves() {
+		let (_, first) = funded_test_input(Amount::from_sat(100_000));
+		let (_, second) = funded_test_input(Amount::from_sat(80_000));
+		let preimage = crate::lightning::Preimage::random();
+		let destination = ArkoorDestination { total_amount: Amount::from_sat(120_000),
+			policy: VtxoPolicy::new_server_htlc_recv(alice_public_key(),
+				preimage.compute_payment_hash(), BlockHeight::new(500), BlockDelta::new(72)),
+		};
+		let (builder, reserve) = ArkoorPackageBuilder::new_funded_lightning_receive(
+			vec![first, second], destination, VtxoPolicy::new_pubkey(alice_public_key()),
+		).unwrap();
+		assert_eq!(reserve.to_sat(), 10_000);
+		let outputs = builder.cosign_both(&[alice_keypair(), alice_keypair()], &server_keypair())
+			.unwrap().build_signed_vtxos();
+		let (htlcs, change): (Vec<_>, Vec<_>) = outputs.into_iter()
+			.partition(|v| matches!(v.policy(), VtxoPolicy::ServerHtlcRecv(_)));
+		assert_eq!(htlcs.iter().map(|v| v.amount()).sum::<Amount>().to_sat(), 120_000);
+		assert_eq!(change.iter().map(|v| v.amount()).sum::<Amount>().to_sat(), 50_000);
+		let (claim, reserve) = ArkoorPackageBuilder::new_funded_lightning_claim(htlcs,
+			VtxoPolicy::new_pubkey(alice_public_key())).unwrap();
+		assert_eq!(reserve.to_sat(), 8_000);
+		let claimed = claim.cosign_both(&[alice_keypair(), alice_keypair()], &server_keypair())
+			.unwrap().build_signed_vtxos();
+		assert_eq!(claimed.iter().map(|v| v.amount()).sum::<Amount>().to_sat(), 112_000);
+	}
+
+	#[test]
+	fn funded_lightning_receive_requires_preimage_and_timeout_margin() {
+		let (funding, input) = funded_test_input(Amount::from_sat(100_000));
+		let preimage = crate::lightning::Preimage::random();
+		let destination = ArkoorDestination {
+			total_amount: Amount::from_sat(96_000),
+			policy: crate::vtxo::policy::ServerHtlcRecvVtxoPolicy {
+				user_pubkey: alice_public_key(), payment_hash: preimage.compute_payment_hash(),
+				htlc_expiry_delta: BlockDelta::new(72), htlc_expiry: BlockHeight::new(500),
+			}.into(),
+		};
+		let builder = ArkoorBuilder::new_funded(input, vec![destination], true,
+			crate::exit_policy::paperclip_funding()).unwrap();
+		let htlcs = ArkoorPackageBuilder { builders: vec![builder] }
+			.cosign_both(&[alice_keypair()], &server_keypair()).unwrap().build_signed_vtxos();
+		let htlc = &htlcs[0];
+		let policy = crate::exit_policy::paperclip_policy();
+		policy.check_lightning_receive(htlc, &funding, BlockHeight::new(284), &preimage).unwrap();
+		assert!(policy.check_lightning_receive(htlc, &funding, BlockHeight::new(285), &preimage).is_err());
+		assert!(policy.check_lightning_receive(htlc, &funding, BlockHeight::new(100),
+			&crate::lightning::Preimage::random()).is_err());
+		let mut broken = htlc.clone();
+		broken.genesis.items[0].miner_fee = Amount::ZERO;
+		assert!(policy.check_lightning_receive(&broken, &funding, BlockHeight::new(100), &preimage).is_err());
+		let (claim, reserve) = ArkoorPackageBuilder::new_funded_lightning_claim(htlcs,
+			VtxoPolicy::new_pubkey(alice_public_key())).unwrap();
+		assert_eq!(reserve.to_sat(), 4000);
+		let claimed = claim.cosign_both(&[alice_keypair()], &server_keypair()).unwrap().build_signed_vtxos();
+		assert_eq!(claimed[0].amount().to_sat(), 92_000);
+		policy.check(&claimed[0], &funding, BlockHeight::new(100)).unwrap();
 	}
 
 	fn verify_package_builder(

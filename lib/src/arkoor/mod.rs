@@ -446,6 +446,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 			genesis: Full {
 				items: self.input.genesis.items.clone().into_iter().chain([
 					GenesisItem {
+						exit_format: self.exit_funding.map(|f| f.format()).unwrap_or_default(),
 						miner_fee: self.exit_miner_fee(),
 						transition: GenesisTransition::new_arkoor(
 							vec![self.input.user_pubkey()],
@@ -460,7 +461,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 						other_outputs: checkpoint_tx.output
 							.iter().enumerate()
 							.filter_map(|(i, txout)| {
-								if i == output_idx || txout.is_p2a_fee_anchor() {
+								if i == output_idx || txout.is_fee_anchor() {
 									None
 								} else {
 									Some(txout.clone())
@@ -497,6 +498,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 				genesis: Full {
 					items: self.input.genesis.items.iter().cloned().chain([
 						GenesisItem {
+						exit_format: self.exit_funding.map(|f| f.format()).unwrap_or_default(),
 							miner_fee: self.exit_miner_fee(),
 							transition: GenesisTransition::new_arkoor(
 								vec![self.input.user_pubkey()],
@@ -511,7 +513,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 							other_outputs: checkpoint_tx.output
 								.iter().enumerate()
 								.filter_map(|(i, txout)| {
-									if i == output_idx || txout.is_p2a_fee_anchor() {
+									if i == output_idx || txout.is_fee_anchor() {
 										None
 									} else {
 										Some(txout.clone())
@@ -521,6 +523,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 							fee_amount: self.exit_anchor(),
 						},
 						GenesisItem {
+						exit_format: self.exit_funding.map(|f| f.format()).unwrap_or_default(),
 							miner_fee: self.exit_miner_fee(),
 							transition: GenesisTransition::new_arkoor(
 								vec![self.input.user_pubkey()],
@@ -553,6 +556,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 				genesis: Full {
 					items: self.input.genesis.items.iter().cloned().chain([
 						GenesisItem {
+						exit_format: self.exit_funding.map(|f| f.format()).unwrap_or_default(),
 							miner_fee: self.exit_miner_fee(),
 							transition: GenesisTransition::new_arkoor(
 								vec![self.input.user_pubkey()],
@@ -567,7 +571,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 							other_outputs: arkoor_tx.output
 								.iter().enumerate()
 								.filter_map(|(idx, txout)| {
-									if idx == output_idx || txout.is_p2a_fee_anchor() {
+									if idx == output_idx || txout.is_fee_anchor() {
 										None
 									} else {
 										Some(txout.clone())
@@ -618,6 +622,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 					items: self.input.genesis.items.iter().cloned().chain([
 						// Transition 1: input -> checkpoint
 						GenesisItem {
+						exit_format: self.exit_funding.map(|f| f.format()).unwrap_or_default(),
 							miner_fee: self.exit_miner_fee(),
 							transition: GenesisTransition::new_arkoor(
 								vec![self.input.user_pubkey()],
@@ -634,7 +639,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 							other_outputs: checkpoint_tx.output
 								.iter().enumerate()
 								.filter_map(|(idx, txout)| {
-									let is_p2a = txout.is_p2a_fee_anchor();
+									let is_p2a = txout.is_fee_anchor();
 									if idx == dust_isolation_output_idx || is_p2a {
 										None
 									} else {
@@ -646,6 +651,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 						},
 						// Transition 2: checkpoint -> isolation fanout tx (final vtxo)
 						GenesisItem {
+						exit_format: self.exit_funding.map(|f| f.format()).unwrap_or_default(),
 							miner_fee: self.exit_miner_fee(),
 							transition: GenesisTransition::new_arkoor(
 								vec![self.input.user_pubkey()],
@@ -662,7 +668,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 							other_outputs: fanout_tx.output
 								.iter().enumerate()
 								.filter_map(|(idx, txout)| {
-									if idx == isolated_idx || txout.is_p2a_fee_anchor() {
+									if idx == isolated_idx || txout.is_fee_anchor() {
 										None
 									} else {
 										Some(txout.clone())
@@ -690,6 +696,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 					items: self.input.genesis.items.iter().cloned().chain([
 						// Transition 1: input -> arkoor tx (which includes isolation output)
 						GenesisItem {
+						exit_format: self.exit_funding.map(|f| f.format()).unwrap_or_default(),
 							miner_fee: self.exit_miner_fee(),
 							transition: GenesisTransition::new_arkoor(
 								vec![self.input.user_pubkey()],
@@ -704,7 +711,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 							other_outputs: arkoor_tx.output
 								.iter().enumerate()
 								.filter_map(|(idx, txout)| {
-									if idx == dust_isolation_output_idx || txout.is_p2a_fee_anchor() {
+									if idx == dust_isolation_output_idx || txout.is_fee_anchor() {
 										None
 									} else {
 										Some(txout.clone())
@@ -715,6 +722,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 						},
 						// Transition 2: isolation output -> isolation fanout tx (final vtxo)
 						GenesisItem {
+						exit_format: self.exit_funding.map(|f| f.format()).unwrap_or_default(),
 							miner_fee: self.exit_miner_fee(),
 							transition: GenesisTransition::new_arkoor(
 								vec![self.input.user_pubkey()],
@@ -729,7 +737,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 							other_outputs: fanout_tx.output
 								.iter().enumerate()
 								.filter_map(|(idx, txout)| {
-									if idx == isolated_idx || txout.is_p2a_fee_anchor() {
+									if idx == isolated_idx || txout.is_fee_anchor() {
 										None
 									} else {
 										Some(txout.clone())
@@ -805,6 +813,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 				genesis: Full {
 					items: self.input.genesis.items.clone().into_iter().chain([
 						GenesisItem {
+						exit_format: self.exit_funding.map(|f| f.format()).unwrap_or_default(),
 							miner_fee: self.exit_miner_fee(),
 							transition: GenesisTransition::new_arkoor(
 								vec![self.input.user_pubkey()],
@@ -814,7 +823,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 							output_idx: u8::try_from(output_idx).expect("arkoor output index fits in u8"),
 							other_outputs: int_tx.output.iter().enumerate()
 								.filter_map(|(i, txout)| {
-									if i == output_idx || txout.is_p2a_fee_anchor() {
+									if i == output_idx || txout.is_fee_anchor() {
 										None
 									} else {
 										Some(txout.clone())
@@ -908,7 +917,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 			.script_pubkey(input.server_pubkey(), input.exit_delta(), input.expiry_height());
 
 		Transaction {
-			version: bitcoin::transaction::Version(3),
+			version: exit_funding.map(|f| f.format()).unwrap_or_default().version(),
 			lock_time: bitcoin::absolute::LockTime::ZERO,
 			input: vec![TxIn {
 				previous_output: input.point(),
@@ -929,7 +938,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 						script_pubkey: checkpoint_spk.clone(),
 					}
 				}))
-				.chain([fee::fee_anchor_with_amount(exit_funding.map(|f| f.anchor()).unwrap_or(Amount::ZERO))]).collect()
+				.chain([exit_funding.map(|f| f.format()).unwrap_or_default().anchor(exit_funding.map(|f| f.anchor()).unwrap_or(Amount::ZERO))]).collect()
 		}
 	}
 
@@ -947,7 +956,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 
 			for (vout, output) in outputs.iter().enumerate() {
 				let transaction = Transaction {
-					version: bitcoin::transaction::Version(3),
+					version: exit_funding.map(|f| f.format()).unwrap_or_default().version(),
 					lock_time: bitcoin::absolute::LockTime::ZERO,
 					input: vec![TxIn {
 						previous_output: OutPoint::new(checkpoint_txid, u32::try_from(vout).expect("output index fits in u32")),
@@ -962,7 +971,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 							input.exit_delta(),
 							input.expiry_height(),
 						),
-						fee::fee_anchor_with_amount(exit_funding.map(|f| f.anchor()).unwrap_or(Amount::ZERO)),
+						exit_funding.map(|f| f.format()).unwrap_or_default().anchor(exit_funding.map(|f| f.anchor()).unwrap_or(Amount::ZERO)),
 					]
 				};
 				arkoor_txs.push(transaction);
@@ -979,7 +988,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 			);
 
 			let transaction = Transaction {
-				version: bitcoin::transaction::Version(3),
+				version: exit_funding.map(|f| f.format()).unwrap_or_default().version(),
 				lock_time: bitcoin::absolute::LockTime::ZERO,
 				input: vec![TxIn {
 					previous_output: input.point(),
@@ -999,7 +1008,7 @@ impl<S: state::BuilderState> ArkoorBuilder<S> {
 						value: amt,
 						script_pubkey: checkpoint_spk.clone(),
 					}))
-					.chain([fee::fee_anchor_with_amount(exit_funding.map(|f| f.anchor()).unwrap_or(Amount::ZERO))])
+					.chain([exit_funding.map(|f| f.format()).unwrap_or_default().anchor(exit_funding.map(|f| f.anchor()).unwrap_or(Amount::ZERO))])
 					.collect()
 			};
 			vec![transaction]
@@ -1283,6 +1292,11 @@ impl ArkoorBuilder<state::Initial> {
 			&& input.genesis.items.iter().all(|i| i.miner_fee != Amount::ZERO);
 		if (any_funded && exit_funding.is_none()) || (exit_funding.is_some() && !all_funded) {
 			return Err(ArkoorConstructionError::IncompatibleExitFunding);
+		}
+		if let Some(funding) = exit_funding {
+			if input.genesis.items.iter().any(|i| i.exit_format != funding.format()) {
+				return Err(ArkoorConstructionError::IncompatibleExitFunding);
+			}
 		}
 		// Do some validation on the amounts
 		Self::validate_amounts(&input, &outputs, &isolated_outputs, use_checkpoint, exit_funding)?;

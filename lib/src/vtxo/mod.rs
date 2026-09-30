@@ -111,7 +111,7 @@ pub const VTXO_DUST: Amount = P2TR_DUST;
 pub const EXIT_TX_WEIGHT: Weight = Weight::from_vb_unchecked(124);
 
 /// The current version of the vtxo encoding.
-const VTXO_ENCODING_VERSION: u16 = 3;
+const VTXO_ENCODING_VERSION: u16 = 4;
 /// The version before a fee amount was added to each genesis item.
 const VTXO_NO_FEE_AMOUNT_VERSION: u16 = 1;
 
@@ -122,8 +122,8 @@ pub struct VtxoIdParseError;
 
 /// Reason a [Vtxo] failed the [Vtxo::check_standard] check.
 ///
-/// A VTXO is standard if and only if every output in its exit chain — its
-/// own output plus all sibling outputs of every exit transaction — uses a
+/// A VTXO is standard if and only if every output in its exit chain â€” its
+/// own output plus all sibling outputs of every exit transaction â€” uses a
 /// known script type *and* carries a value at or above that script's dust
 /// limit. Each variant identifies the first violation encountered.
 ///
@@ -141,7 +141,7 @@ pub enum VtxoStandardnessError {
 
 	/// A sibling output produced somewhere along the exit chain is below
 	/// the dust limit. The current VTXO can clear dust on its own and
-	/// still trip this variant — the exit transaction containing the
+	/// still trip this variant â€” the exit transaction containing the
 	/// sub-dust sibling is the part that won't relay.
 	///
 	/// # Example: a small total dust-isolation can't rescue
@@ -150,7 +150,7 @@ pub enum VtxoStandardnessError {
 	/// arkoor builder produces:
 	///
 	/// ```text
-	/// 600 sat  ->  200 sat   // Bob (sub-dust — below P2TR_DUST = 330)
+	/// 600 sat  ->  200 sat   // Bob (sub-dust â€” below P2TR_DUST = 330)
 	///              400 sat   // Alice's change (above dust)
 	/// ```
 	///
@@ -161,7 +161,7 @@ pub enum VtxoStandardnessError {
 	/// 200 sat already lives in the dust pool; to reach 330 the builder
 	/// would have to split Alice's change and pull another 130 sat into
 	/// the pool. That leaves 270 sat as the leftover piece of Alice's
-	/// change — still sub-dust. Splitting trades one sub-dust output
+	/// change â€” still sub-dust. Splitting trades one sub-dust output
 	/// for two, so the builder falls through and emits the 200/400
 	/// outputs as-is.
 	#[error("dust sibling output at genesis item {item_idx}/{item_count}, output {output_idx}")]
@@ -848,7 +848,7 @@ impl<P: Policy> Vtxo<Full, P> {
 		})?)
 	}
 
-	/// The ids of every intermediate output in this VTXO's genesis chain — a
+	/// The ids of every intermediate output in this VTXO's genesis chain â€” a
 	/// *superset* of the ancestor VTXOs it (directly or transitively) spent.
 	///
 	/// [`Vtxo::transactions`] walks the chain from the anchor down to this VTXO;
@@ -1398,7 +1398,8 @@ impl VtxoVersionedEncoding for Bare {
 
 impl VtxoVersionedEncoding for Full {
 	fn encode<W: io::Write + ?Sized>(&self, w: &mut W, version: u16) -> Result<(), io::Error> {
-		if self.items.iter().any(|i| (version < 3 && i.miner_fee != Amount::ZERO)
+		if self.items.iter().any(|i| (version < 4 && i.exit_format != bitcoin_ext::fee::ExitFormat::LegacyV3)
+			|| (version < 3 && i.miner_fee != Amount::ZERO)
 			|| (version == 1 && i.fee_amount != Amount::ZERO)) {
 			return Err(io::Error::other("cannot discard exit funding in an older encoding"));
 		}
@@ -1414,6 +1415,7 @@ impl VtxoVersionedEncoding for Full {
 			}
 			if version >= 2 { w.emit_u64(item.fee_amount.to_sat())?; }
 			if version >= 3 { w.emit_u64(item.miner_fee.to_sat())?; }
+			if version >= 4 { w.emit_u8(item.exit_format.code())?; }
 		}
 		Ok(())
 	}
@@ -1456,7 +1458,10 @@ impl VtxoVersionedEncoding for Full {
 			} else {
 				Amount::ZERO
 			};
-			genesis.push(GenesisItem { transition, output_idx, other_outputs, fee_amount, miner_fee });
+			let exit_format = if version >= 4 {
+				bitcoin_ext::fee::ExitFormat::from_code(r.read_u8()?).map_err(ProtocolDecodingError::invalid)?
+			} else { bitcoin_ext::fee::ExitFormat::LegacyV3 };
+			genesis.push(GenesisItem { exit_format, transition, output_idx, other_outputs, fee_amount, miner_fee });
 		}
 		Ok(Full { items: genesis })
 	}
@@ -1528,7 +1533,7 @@ where
 	R: io::Read + ?Sized,
 {
 	let version = r.read_u16()?;
-	if !matches!(version, 1 | 2 | VTXO_ENCODING_VERSION) {
+	if !matches!(version, 1 | 2 | 3 | VTXO_ENCODING_VERSION) {
 		return Err(ProtocolDecodingError::invalid(format_args!(
 			"invalid Vtxo encoding version byte: {version:#x}",
 		)));
@@ -1588,6 +1593,30 @@ mod test {
 		for len in 0..encoded.len() {
 			assert!(Full::decode(&mut &encoded[..len], 3).is_err());
 		}
+	}
+
+	#[test]
+	fn standard_v2_encoding_preserves_signed_formats() {
+		let mut vtxo = VTXO_VECTORS.board_vtxo.clone();
+		let legacy = vtxo.transactions().collect::<Vec<_>>();
+		for version in [2, 3] {
+			let mut bytes = Vec::new();
+			Full::encode(&vtxo.genesis, &mut bytes, version).unwrap();
+			let decoded = Full::decode(&mut bytes.as_slice(), version).unwrap();
+			assert!(decoded.items.iter().all(|i| i.exit_format == bitcoin_ext::fee::ExitFormat::LegacyV3));
+			vtxo.genesis = decoded;
+			assert_eq!(vtxo.transactions().collect::<Vec<_>>(), legacy);
+		}
+		vtxo.genesis.items[0].exit_format = bitcoin_ext::fee::ExitFormat::StandardV2;
+		for version in [1, 2, 3] {
+			assert!(Full::encode(&vtxo.genesis, &mut Vec::new(), version).is_err());
+		}
+		let mut bytes = Vec::new();
+		Full::encode(&vtxo.genesis, &mut bytes, 4).unwrap();
+		assert_eq!(Full::decode(&mut bytes.as_slice(), 4).unwrap().items, vtxo.genesis.items);
+		for len in 0..bytes.len() { assert!(Full::decode(&mut &bytes[..len], 4).is_err()); }
+		*bytes.last_mut().unwrap() = 255;
+		assert!(Full::decode(&mut bytes.as_slice(), 4).is_err());
 	}
 
 	#[test]
@@ -1706,7 +1735,7 @@ mod test {
 			"a chain-anchor VTXO has no ancestors");
 
 		// For every fixture: ancestor_ids is the whole genesis chain minus the
-		// VTXO itself — length one less than the chain, never the VTXO's own id,
+		// VTXO itself â€” length one less than the chain, never the VTXO's own id,
 		// and the chain's final tx produces the VTXO itself (the invariant
 		// ancestor_ids relies on).
 		for vtxo in [
@@ -1800,6 +1829,7 @@ mod test {
 			anchor_point: OutPoint::new(Txid::from_slice(&[1u8; 32]).unwrap(), 1),
 			genesis: Full {
 				items: vec![GenesisItem {
+					exit_format: bitcoin_ext::fee::ExitFormat::LegacyV3,
 					miner_fee: Amount::ZERO,
 					transition: GenesisTransition::new_cosigned(
 						vec![DUMMY_USER_KEY.public_key()],
@@ -1826,6 +1856,7 @@ mod test {
 			anchor_point: OutPoint::new(Txid::from_slice(&[1u8; 32]).unwrap(), 1),
 			genesis: Full {
 				items: vec![GenesisItem {
+					exit_format: bitcoin_ext::fee::ExitFormat::LegacyV3,
 					miner_fee: Amount::ZERO,
 					transition: GenesisTransition::new_cosigned(
 						vec![DUMMY_USER_KEY.public_key()],
@@ -1892,6 +1923,7 @@ mod test {
 			anchor_point: OutPoint::new(Txid::from_slice(&[1u8; 32]).unwrap(), 1),
 			genesis: Full {
 				items: vec![GenesisItem {
+					exit_format: bitcoin_ext::fee::ExitFormat::LegacyV3,
 					miner_fee: Amount::ZERO,
 					transition: GenesisTransition::new_cosigned(
 						vec![DUMMY_USER_KEY.public_key()],

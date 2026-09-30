@@ -283,6 +283,7 @@ impl Server {
 	pub fn ark_info(&self) -> ark::ArkInfo {
 		ark::ArkInfo {
 			exit_profile: ark::exit_policy::PAPERCLIP_EXIT_PROFILE,
+			funded_lightning: self.config.experimental_funded_lightning && !self.config.cln_array.is_empty(),
 			network: self.config.network,
 			server_pubkey: self.server_pubkey,
 			mailbox_pubkey: self.mailbox_pubkey,
@@ -712,7 +713,7 @@ impl Server {
 			}
 		}
 
-		let builder = BoardBuilder::new_for_funded_cosign(
+		let builder = BoardBuilder::new_for_standard_cosign(
 			user_pubkey,
 			expiry_height,
 			self.server_pubkey,
@@ -994,7 +995,7 @@ impl Server {
 		// in the [Server::register_cosigned_vtxo_tree] step.
 		let cosign_key = self.get_ephemeral_cosign_key(server_cosign_pubkey).await?;
 
-		let builder = SignedTreeBuilder::new_for_cosign(
+		let builder = SignedTreeBuilder::new_for_funded_cosign(
 			vtxos,
 			cosign_pubkey,
 			unlock_preimage,

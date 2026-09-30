@@ -311,6 +311,9 @@ pub struct Config {
 
 	#[serde(default)]
 	pub cln_array: Vec<Lightningd>,
+	/// Private test opt-in; requires funded HTLC recovery and an XBT hold plugin.
+	#[serde(default)]
+	pub experimental_funded_lightning: bool,
 	#[serde(with = "utils::serde::duration")]
 	pub cln_reconnect_interval: Duration,
 	#[serde(with = "utils::serde::duration")]
@@ -517,8 +520,8 @@ impl Config {
 	///
 	/// It also checks if all required configurations are available
 	pub fn validate(&self) -> anyhow::Result<()> {
-		ensure!(self.cln_array.is_empty(), "funded exit test profile does not support Lightning contracts yet");
-		ensure!(self.vtxopool.vtxo_targets.is_empty(), "funded exit test profile requires an empty liquidity pool");
+		ensure!(self.cln_array.is_empty() || self.experimental_funded_lightning, "funded Lightning requires explicit test opt-in");
+		ensure!(self.vtxopool.vtxo_targets.is_empty() || self.experimental_funded_lightning, "funded pool requires explicit test opt-in");
 
 		self.bitcoind.validate()?;
 		self.fees.validate()?;

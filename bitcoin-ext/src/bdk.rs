@@ -266,10 +266,12 @@ pub trait TxBuilderExt<'a, A>: BorrowMut<TxBuilder<'a, A>> {
 	{
 		let psbt_in = Input {
 			witness_utxo: Some(output.clone()),
-			final_script_witness: Some(Witness::new()),
+			final_script_witness: Some(if output.script_pubkey == crate::fee::standard_anchor_script().to_p2wsh() {
+				Witness::from_slice(&[crate::fee::standard_anchor_script().as_bytes()])
+			} else { Witness::new() }),
 			..Default::default()
 		};
-		self.borrow_mut().add_foreign_utxo(anchor, psbt_in, FEE_ANCHOR_SPEND_WEIGHT)
+		self.borrow_mut().add_foreign_utxo(anchor, psbt_in, bitcoin::Weight::from_wu(3).max(FEE_ANCHOR_SPEND_WEIGHT))
 			.expect("adding foreign utxo");
 	}
 }
@@ -415,7 +417,7 @@ pub trait WalletExt: BorrowMut<Wallet> {
 				.coin_selection(WithGuaranteedChange(DefaultCoinSelectionAlgorithm::default()));
 			b.only_witness_utxo();
 			b.exclude_unconfirmed();
-			b.version(3); // for 1p1c package relay, all inputs must be confirmed
+			b.version(tx.version.0); // Preserve the parent relay profile.
 			b.add_fee_anchor_spend(fee_anchor_point, fee_anchor_txout);
 			b.drain_to(change_addr.address.script_pubkey());
 			b.fee_absolute(fee_needed);

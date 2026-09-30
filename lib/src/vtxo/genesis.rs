@@ -8,7 +8,7 @@ use bitcoin::key::TweakedPublicKey;
 use bitcoin::sighash;
 use bitcoin::taproot::{self, TapLeafHash, LeafVersion, TapTweakHash};
 
-use bitcoin_ext::{fee, BlockDelta, BlockHeight, TaprootSpendInfoExt};
+use bitcoin_ext::{ BlockDelta, BlockHeight, TaprootSpendInfoExt};
 
 use crate::SECP;
 use crate::musig;
@@ -545,6 +545,7 @@ impl GenesisTransition {
 /// See private module-level documentation for more info.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenesisItem {
+	pub exit_format: bitcoin_ext::fee::ExitFormat,
 	/// The transition from the previous tx to this one.
 	pub transition: GenesisTransition,
 	/// The output index ("vout") of the output going to the next genesis item.
@@ -562,7 +563,7 @@ pub struct GenesisItem {
 impl GenesisItem {
 	/// Construct the P2A (pay-to-anchor) output for the exit tx.
 	pub fn fee_anchor(&self) -> TxOut {
-		fee::fee_anchor_with_amount(self.fee_amount)
+		self.exit_format.anchor(self.fee_amount)
 	}
 
 	/// Value consumed outside the continuing output: siblings, anchor, and miner fee.
@@ -582,7 +583,7 @@ impl GenesisItem {
 		expiry_height: BlockHeight,
 	) -> Transaction {
 		Transaction {
-			version: bitcoin::transaction::Version(3),
+			version: self.exit_format.version(),
 			lock_time: bitcoin::absolute::LockTime::ZERO,
 			input: vec![TxIn {
 				previous_output: prev,

@@ -56,6 +56,8 @@ impl Daemon {
 		}
 
 		let bitcoind = bcd::build_client(&cfg.bitcoind.url, cfg.bitcoind.auth())?;
+		bcd::require_network(&bitcoind, cfg.network).await?;
+		bcd::require_version(&bitcoind).await?;
 		// Check if our bitcoind is on the expected network.
 		let network = bitcoind.network().await?;
 		if network != cfg.network {
@@ -124,6 +126,8 @@ impl Daemon {
 			.context("failed to connect to db")?;
 
 		let bitcoind = bcd::build_client(&cfg.bitcoind.url, cfg.bitcoind.auth())?;
+		bcd::require_network(&bitcoind, cfg.network).await?;
+		bcd::require_version(&bitcoind).await?;
 		// Check if our bitcoind is on the expected network.
 		let network = bitcoind.network().await?;
 		if network != cfg.network {

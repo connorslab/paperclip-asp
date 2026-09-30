@@ -54,6 +54,8 @@ lazy_static! {
 pub struct ArkInfo {
 	/// Explicit recovery transaction profile; zero denotes the legacy graph.
 	pub exit_profile: u32,
+	/// Explicit opt-in to funded XBT Lightning contracts.
+	pub funded_lightning: bool,
 	/// The bitcoin network the server operates on
 	pub network: Network,
 	/// The Ark server pubkey

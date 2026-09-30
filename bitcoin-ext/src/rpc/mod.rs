@@ -436,6 +436,8 @@ pub enum TxindexError {
 	Rpc(#[from] AsyncClientError),
 	#[error("txindex is not enabled. Run bitcoind with txindex = 1")]
 	NotEnabled,
+	#[error("transaction history is incomplete, stale, or from a different chain")]
+	Incomplete,
 }
 
 /// How the async client reports a JSON-RPC `result` of `null`.
@@ -453,8 +455,12 @@ const ASYNC_CLIENT_NULL_RESULT: &str = "Empty data received";
 #[cfg(feature = "rpc-async")]
 #[async_trait]
 pub trait BitcoinAsyncRpcExt {
-	/// Checks that the connected bitcoind runs with `txindex=1`.
+	/// Require a synchronized txindex, or explicitly enabled Paperclip pruned RPC.
 	async fn require_txindex(&self) -> Result<(), TxindexError>;
+
+	/// Supply local recovery ancestry to an explicitly selected pruned adapter.
+	/// The adapter proves that the transactions cannot predate indexed history.
+	async fn register_pruned_transactions(&self, txs: &[bitcoin::Transaction]) -> Result<(), AsyncClientError>;
 
 	/// `gettxout`, reporting the `null` of a spent or unknown output as `Ok(None)`.
 	///
@@ -472,10 +478,27 @@ pub trait BitcoinAsyncRpcExt {
 #[cfg(feature = "rpc-async")]
 #[async_trait]
 impl BitcoinAsyncRpcExt for AsyncClient {
+	async fn register_pruned_transactions(&self, txs: &[bitcoin::Transaction]) -> Result<(), AsyncClientError> {
+		if std::env::var("PAPERCLIP_PRUNED_RPC").as_deref() == Ok("1") && !txs.is_empty() {
+			let hexes: Vec<_> = txs.iter().map(bitcoin::consensus::encode::serialize_hex).collect();
+			let _: bool = self.call_raw("paperclipregistertransactions", &[serde_json::json!(hexes)]).await?;
+		}
+		Ok(())
+	}
+
 	async fn require_txindex(&self) -> Result<(), TxindexError> {
-		let info: json::GetIndexInfoResult = self.call_raw("getindexinfo", &[]).await?;
-		if info.txindex.is_none() {
+		let info: serde_json::Value = self.call_raw("getindexinfo", &[]).await?;
+		if info["txindex"]["synced"].as_bool() == Some(true) {
+			return Ok(());
+		}
+		if std::env::var("PAPERCLIP_PRUNED_RPC").as_deref() != Ok("1") {
 			return Err(TxindexError::NotEnabled);
+		}
+		let history: serde_json::Value = self.call_raw("getpaperclipindexinfo", &[]).await?;
+		let chain: serde_json::Value = self.call_raw("getblockchaininfo", &[]).await?;
+		let genesis: String = self.call_raw("getblockhash", &[0.into()]).await?;
+		if !pruned_history_ready(&history, &chain, &genesis) {
+			return Err(TxindexError::Incomplete);
 		}
 		Ok(())
 	}
@@ -495,5 +518,50 @@ impl BitcoinAsyncRpcExt for AsyncClient {
 			Err(AsyncClientError::Other(msg)) if msg == ASYNC_CLIENT_NULL_RESULT => Ok(None),
 			Err(e) => Err(e),
 		}
+	}
+}
+
+/// A scoped index must cover all activated XBT history. Unknown transactions
+/// remain errors, so a missing historical record is never proof of absence.
+#[cfg(feature = "rpc-async")]
+fn pruned_history_ready(history: &serde_json::Value, chain: &serde_json::Value, genesis: &str) -> bool {
+	let latest_origin = match chain["chain"].as_str() {
+		Some("main") => 961_640,
+		Some("regtest") => 0,
+		_ => return false,
+	};
+	history["version"].as_u64() == Some(1)
+		&& history["first_height"].as_u64().is_some_and(|h| h <= latest_origin)
+		&& history["synced"].as_bool() == Some(true)
+		&& chain["initialblockdownload"].as_bool() == Some(false)
+		&& history["genesis"].as_str() == Some(genesis)
+		&& history["best_block_hash"].as_str().is_some()
+		&& history["best_block_hash"] == chain["bestblockhash"]
+		&& history["best_block_height"].as_u64().is_some()
+		&& history["best_block_height"] == chain["blocks"]
+		&& history["unknown_transactions"].as_str() == Some("error")
+}
+
+#[cfg(all(test, feature = "rpc-async"))]
+mod pruned_tests {
+	use super::pruned_history_ready;
+	use serde_json::json;
+
+	#[test]
+	fn pruned_history_requires_complete_matching_coverage() {
+		let chain = json!({"chain":"main", "blocks":975000, "bestblockhash":"tip", "initialblockdownload":false});
+		let history = json!({"version":1, "first_height":961640, "synced":true,
+			"genesis":"genesis", "best_block_height":975000, "best_block_hash":"tip", "unknown_transactions":"error"});
+		assert!(pruned_history_ready(&history, &chain, "genesis"));
+		for (key, value) in [
+			("first_height", json!(961641)), ("synced", json!(false)),
+			("genesis", json!("other")), ("best_block_hash", json!("stale")),
+			("best_block_height", json!(974999)), ("version", json!(2)),
+			("unknown_transactions", json!("absent")),
+		] {
+			let mut bad = history.clone(); bad[key] = value;
+			assert!(!pruned_history_ready(&bad, &chain, "genesis"), "{key}");
+		}
+		assert!(!pruned_history_ready(&json!({}), &chain, "genesis"));
 	}
 }

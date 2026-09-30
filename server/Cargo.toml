@@ -15,6 +15,10 @@ path = "src/lib.rs"
 name = "paperclip-asp"
 path = "src/bin/captaind/main.rs"
 
+[[bin]]
+name = "paperclip-watchman"
+path = "src/bin/watchmand/main.rs"
+
 [dependencies]
 
 # OWN

@@ -98,6 +98,9 @@ impl Server {
 		let mut vtxo_ids = Vec::with_capacity(forfeits.len());
 		let mut seen = HashSet::with_capacity(forfeits.len());
 		for bundle in forfeits {
+			if bundle.exit_format != bitcoin_ext::fee::ExitFormat::StandardV2 {
+				return badarg!("profile 2 requires standard funded forfeits");
+			}
 			if *unlock_hash.get_or_insert(bundle.unlock_hash) != bundle.unlock_hash {
 				return badarg!("not all forfeit bundles have same unlock hash");
 			}

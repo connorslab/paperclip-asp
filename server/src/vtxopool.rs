@@ -316,31 +316,11 @@ impl VtxoPool {
 			ret
 		};
 
-		let input_sum = input_vtxos.iter().map(|v| v.amount()).sum::<Amount>();
-		let change_amount = input_sum - dest.total_amount;
-		// Omit the change output when the inputs exactly cover the destination.
-		// A zero-value change output would produce a valueless VTXO, which
-		// arkoor construction rejects.
-		let outputs = if change_amount == Amount::ZERO {
-			vec![dest.clone()]
-		} else {
-			let change_key = srv.generate_ephemeral_cosign_key(self.config.vtxo_key_lifetime()).await?;
-			let change_policy = VtxoPolicy::new_pubkey(change_key.public_key());
-			vec![
-				dest.clone(),
-				ArkoorDestination {
-					policy: change_policy,
-					total_amount: change_amount,
-				},
-			]
-		};
-		// The checkpoint caps the watchman's on-chain traversal when an exit
-		// anchors an allocation chain: checkpoints are swept at expiry instead
-		// of progressed further.
-		let builder = ArkoorPackageBuilder::new_with_checkpoints(
-			input_vtxos.into_iter().map(|v| v.into_inner()),
-			outputs,
-		).context("arkoor builder error")?;
+		let change_key = srv.generate_ephemeral_cosign_key(self.config.vtxo_key_lifetime()).await?;
+		let (builder, _reserve) = ArkoorPackageBuilder::new_funded_lightning_receive(
+			input_vtxos.into_iter().map(|v| v.into_inner()).collect(), dest.clone(),
+			VtxoPolicy::new_pubkey(change_key.public_key()),
+		).context("funded pool allocation failed")?;
 		let builder = builder.cosign_both(&keys, srv.server_key.leak_ref())
 			.context("error cosigning arkoor")?;
 
@@ -352,6 +332,16 @@ impl VtxoPool {
 		let (sent, change) = output_vtxos.into_iter()
 			.partition::<Vec<_>, _>(|v| *v.policy() == dest.policy);
 
+		for vtxo in &sent {
+			let VtxoPolicy::ServerHtlcRecv(p) = vtxo.policy() else { bail!("invalid pool destination"); };
+			let deadline = u32::try_from(vtxo.exit_depth()).context("pool exit depth overflow")?
+				.checked_add(srv.chain_tip().height.to_u32())
+				.and_then(|h| h.checked_add(u32::from(vtxo.exit_delta().to_u16())))
+				.and_then(|h| h.checked_add(u32::from(p.htlc_expiry_delta.to_u16()) + 12))
+				.context("pool recovery deadline overflow")?;
+			ensure!(deadline < p.htlc_expiry.to_u32() && deadline < vtxo.expiry_height().to_u32(),
+				"pool HTLC has insufficient recovery headroom");
+		}
 		let change = check_change_outputs(change)?;
 
 		let update = VtxoTreeUpdate::new()
@@ -430,7 +420,19 @@ impl VtxoPool {
 		srv: &Server,
 		dest: ArkoorDestination,
 	) -> anyhow::Result<Vec<Vtxo<Full>>> {
-		let inputs = self.data.lock().take_inputs(dest.total_amount);
+		let inputs = {
+			let mut data = self.data.lock();
+			let mut count = 1u64;
+			loop {
+				let reserve = ark::exit_policy::paperclip_funding().per_transaction()
+					.checked_mul(3 * count).context("pool reserve overflow")?;
+				let required = dest.total_amount.checked_add(reserve).context("pool amount overflow")?;
+				let inputs = data.take_inputs(required);
+				if inputs.is_empty() || inputs.len() as u64 <= count { break inputs; }
+				count = inputs.len() as u64;
+				for (id, height, amount) in inputs { data.insert(id, height, amount); }
+			}
+		};
 		if inputs.is_empty() {
 			bail!("vtxo pool is empty");
 		}
@@ -548,7 +550,8 @@ impl Process {
 			self.srv.server_pubkey,
 			server_cosign_key.public_key(),
 			self.srv.config.vtxo_exit_delta,
-		).context("builder error")?;
+		).context("builder error")?
+			.with_exit_funding(ark::exit_policy::paperclip_funding()).context("pool recovery funding")?;
 
 		let fee_rate = self.srv.fee_estimator.slow();
 

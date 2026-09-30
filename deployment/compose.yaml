@@ -1,0 +1,54 @@
+# Private operator lab. Supply tested immutable image references and private config.
+# No ports are published. Add a TLS gRPC proxy only after acceptance testing.
+services:
+  postgres:
+    image: ${PAPERCLIP_POSTGRES_IMAGE:?Set a pinned PostgreSQL 17 image}
+    restart: on-failure
+    environment:
+      POSTGRES_DB: paperclip_asp
+      POSTGRES_USER: paperclip-asp
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U paperclip-asp -d paperclip_asp']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    stop_grace_period: 2m
+  asp:
+    image: ${PAPERCLIP_ASP_IMAGE:?Set a pinned Paperclip ASP image}
+    user: '1000:1000'
+    restart: on-failure
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      PAPERCLIP_XBT_MAINNET: ${PAPERCLIP_XBT_MAINNET:-0}
+    command: [paperclip-asp, --config, /config/asp.json, start]
+    volumes:
+      - ${PAPERCLIP_DATA_DIR:?Set the private data directory}:/var/lib/paperclip-asp
+      - ${PAPERCLIP_CONFIG_DIR:?Set the private config directory}:/config:ro
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 2m
+  watchman:
+    image: ${PAPERCLIP_ASP_IMAGE:?Set a pinned Paperclip ASP image}
+    user: '1000:1000'
+    restart: on-failure
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      PAPERCLIP_XBT_MAINNET: ${PAPERCLIP_XBT_MAINNET:-0}
+    command: [paperclip-watchman, --config, /config/watchman.json, start]
+    volumes:
+      - ${PAPERCLIP_DATA_DIR:?Set the private data directory}:/var/lib/paperclip-asp
+      - ${PAPERCLIP_CONFIG_DIR:?Set the private config directory}:/config:ro
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 2m
+secrets:
+  postgres_password:
+    file: ${PAPERCLIP_POSTGRES_PASSWORD_FILE:?Set the private PostgreSQL password file}
+volumes:
+  postgres:

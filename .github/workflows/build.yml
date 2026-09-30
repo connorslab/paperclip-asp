@@ -1,4 +1,4 @@
-name: Private regtest build
+name: XBT stack build
 on:
   workflow_dispatch:
 permissions:
@@ -21,3 +21,12 @@ jobs:
         run: nix develop --command bash scripts/build.sh
       - name: Check unified signatures
         run: nix develop --command cargo test --locked -p bark-bitcoin-ext unified
+      - name: Check versioned recovery compatibility
+        run: nix develop --command just unit standard_v2
+      - name: Check XBT Lightning backend admission
+        run: nix develop --command just unit-server xbt_backend
+      - name: Check private platform configuration
+        run: |
+          python3 deployment/test_config.py
+          python3 deployment/test_operator.py
+          python3 deployment/test_provision.py

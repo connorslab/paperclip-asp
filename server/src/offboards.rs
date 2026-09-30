@@ -12,7 +12,6 @@ use ark::{musig, VtxoId};
 use ark::attestations::OffboardRequestAttestation;
 use ark::fees::{validate_and_subtract_fee_min_dust, VtxoFeeInfo};
 use ark::offboard::{OffboardForfeitContext, OffboardRequest};
-use bitcoin_ext::P2TR_DUST;
 use bitcoin_ext::bdk::WithGuaranteedChange;
 
 use crate::{check_max_amount, Server, SECP};
@@ -275,7 +274,7 @@ impl Server {
 		let connector_spk = ScriptBuf::new_p2tr(
 			&*SECP, self.server_pubkey.x_only_public_key().0, None,
 		);
-		let connector_amt = P2TR_DUST * input_vtxos.len() as u64;
+		let connector_amt = ark::offboard::standard_connector_budget(input_vtxos.len()).context("connector reserve overflow")?;
 
 		let script_pubkey = request.script_pubkey.clone();
 		let fee_rate = request.fee_rate;
