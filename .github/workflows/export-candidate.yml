@@ -1,0 +1,38 @@
+name: Export production candidate
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Full source commit of a successfully built candidate
+        required: true
+permissions:
+  contents: read
+  packages: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Export immutable candidate
+        env:
+          REVISION: ${{ inputs.revision }}
+        run: |
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]]
+          image="ghcr.io/connorslab/paperclip-asp:candidate-$REVISION"
+          docker pull "$image"
+          docker image inspect "$image" --format '{{json .RepoDigests}}' > image-digests.json
+          docker save "$image" | gzip -1 > paperclip-asp.tar.gz
+          sha256sum paperclip-asp.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-image
+          path: |
+            paperclip-asp.tar.gz
+            SHA256SUMS
+            image-digests.json
+          compression-level: 0
+          retention-days: 7
