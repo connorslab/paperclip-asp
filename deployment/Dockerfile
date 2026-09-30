@@ -3,6 +3,9 @@ FROM rust:1.90.0-bookworm AS build
 RUN apt-get update && apt-get install -y --no-install-recommends clang libclang-dev cmake pkg-config protobuf-compiler libssl-dev libsqlite3-dev libpq-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 ENV CARGO_BUILD_JOBS=2
+ARG GIT_HASH=unknown
+ARG SERVER_VERSION=0.0.0-dev
+ENV GIT_HASH=${GIT_HASH} SERVER_VERSION=${SERVER_VERSION}
 COPY . .
 RUN cargo build --locked --release -p bark-server --bin paperclip-asp --bin paperclip-watchman
 
