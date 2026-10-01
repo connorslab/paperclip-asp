@@ -11,8 +11,10 @@ backend may run there or be reached through a private loopback tunnel.
 
 ## Prerequisites
 
-- A current XBT Knots backend with activated Blake2b headers, synchronized
-  `txindex=1`, and normal relay rules. Do not enable policy exemptions.
+- A current XBT Knots backend with activated Blake2b headers and normal relay
+  rules. Use synchronized `txindex=1`, or the bundled
+  [pruned-node adapter](PRUNED-NODES.md) after its historical index completes.
+  Do not enable policy exemptions.
 - Linux with system-wide Nix, PostgreSQL, Caddy, and a dedicated `paperclip-asp`
   service account. Only SSH and HTTPS need public ingress.
 - This source at `/opt/paperclip-asp`, built with `nix develop --command bash
@@ -64,6 +66,9 @@ deadlines. Keep the admin port loopback-only; it is not a public health endpoint
 The server subsidizes round recovery reserves and needs its own confirmed liquidity.
 
 Profile 2 supports ordinary Ark balances, boarding, transfers, refreshes,
-cooperative withdrawals, and unilateral exits. Lightning contracts and the VTXO
-pool remain disabled. Fixed reserves are not a guarantee at arbitrarily high fees.
+cooperative withdrawals, and emergency exits. Lightning contracts and the VTXO
+pool require explicit opt-in and funded liquidity. See [Lightning setup](../LIGHTNING.md)
+and the [payout reserve](../docs/payout-liquidity.md). Reusable BOLT12 receiving
+also requires `experimental_bolt12_receive` and a compatible online wallet.
+Fixed reserves are not a guarantee at arbitrarily high fees.
 Mainnet opt-in is experimental; a regtest pass does not establish production safety.

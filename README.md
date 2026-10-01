@@ -2,7 +2,11 @@
 
 Experimental XBT Ark Service Provider based on Bark by Second and the Bark
 contributors. This repository contains the server and its shared dependencies.
-The wallet and web interface are in `connorslab/paperclip-wallet-app`.
+The wallet and web interface are in [paperclip-wallet-app](https://github.com/connorslab/paperclip-wallet-app).
+
+This is the public source repository for Paperclip's modified Bark `captaind`
+server and watchman. It contains build and deployment examples, not production
+keys, wallet data, or a preconfigured public operator instance.
 
 Paperclip runs this server in public beta. Funded Lightning requires explicit
 configuration; see [implementation and activation requirements](LIGHTNING.md).
@@ -54,10 +58,11 @@ cooperative refresh, not an assumption that old signatures gained reserves.
 
 ## Operations and limits
 
-Use a dedicated PostgreSQL database and separate Knots regtest process. Bind
-public/admin/integration test RPC endpoints to loopback. Keep any persistent test
-state outside Git, with owner-only access. Do not connect a production Lightning
-node. Existing Paperclip pool and Lightning services must remain separate.
+For isolated tests, use a dedicated PostgreSQL database and separate Knots regtest
+process. Bind test RPC endpoints to loopback and never connect a production
+Lightning node to the test harness. For a deployed server, expose only the public
+Ark API through HTTPS. Keep admin, database, blockchain and Lightning management
+APIs private. See the deployment guide for configuration and backup requirements.
 
 Comprehensive adversarial testing, production monitoring and independent review
 remain prerequisites for production deployment. Lightning and liquidity-pool

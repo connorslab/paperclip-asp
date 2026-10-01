@@ -1,7 +1,8 @@
 # XBT Lightning integration
 
-Status: funded version-2 Lightning is available as an explicit private test profile.
-A funded channel and ASP pool are still required for live payments.
+Status: funded version-2 Lightning is deployed in Paperclip's public beta and
+requires explicit opt-in for new installations. A funded channel and server pool
+are required for live payments. This code has not been independently audited.
 
 ## Architecture
 
