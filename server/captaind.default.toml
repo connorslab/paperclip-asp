@@ -291,6 +291,9 @@ ppm_expiry_table = [
 #############
 
 [vtxopool]
+# Keep this many spendable on-chain sats out of automatic pool issuance.
+# Offboards and rounds may use this reserve. Set explicitly for production.
+onchain_reserve_sat = 0
 # The target set of VTXOs to maintain in the pool
 # Format: "<amount>:<count>", f.e. "1000sat:50"
 # Funded recovery profile 1 does not yet support liquidity-pool issuance.

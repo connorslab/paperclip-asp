@@ -19,7 +19,7 @@ use ark::arkoor::package::ArkoorPackageBuilder;
 use ark::tree::signed::{LeafVtxoCosignContext, UnlockPreimage};
 use ark::tree::signed::builder::SignedTreeBuilder;
 use bitcoin_ext::{BlockDelta, BlockHeight, BlockRef, P2TR_DUST};
-use bitcoin_ext::bdk::WithGuaranteedChange;
+use bitcoin_ext::bdk::{WalletExt, WithGuaranteedChange};
 
 use crate::database::vtxopool::PoolVtxo;
 use crate::database::htlc_vtxo::{self, HtlcDirection};
@@ -59,6 +59,10 @@ impl str::FromStr for VtxoTarget {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+	/// Keep this many spendable on-chain sats for offboards and rounds.
+	/// This limits automatic pool issuance, not user withdrawals.
+	#[serde(default)]
+	pub onchain_reserve_sat: u64,
 	/// the amounts to create vtxos in
 	///
 	/// The string representation of the elements is `"<amount>:<count>"`,
@@ -79,6 +83,7 @@ pub struct Config {
 impl Default for Config {
 	fn default() -> Self {
 		Self {
+			onchain_reserve_sat: 0,
 			vtxo_targets: Vec::new(),
 			vtxo_target_issue_threshold: 80,
 			vtxo_lifetime: BlockDelta::new(144 * 3),
@@ -558,13 +563,21 @@ impl Process {
 		let funding_txout = builder.funding_txout();
 
 		let txout = funding_txout.clone();
+		let reserve = Amount::from_sat(self.config.onchain_reserve_sat);
 		let (mut wallet, funding_psbt) = self.srv.rounds_wallet.build_blocking(
 			move |wallet| {
 				let selection = WithGuaranteedChange(SingleRandomDraw);
-				wallet.build_tx_at_chunk_feerate(selection, fee_rate, |b| {
+				let psbt = wallet.build_tx_at_chunk_feerate(selection, fee_rate, |b| {
 					b.add_recipient(txout.script_pubkey.clone(), txout.value);
 					Ok(())
-				}).context("failed to build signed tree funding tx")
+				}).context("failed to build signed tree funding tx")?;
+				let cost = txout.value.checked_add(psbt.fee().context("pool funding fee")?)
+					.context("pool funding cost overflow")?;
+				if wallet.available_balance().checked_sub(cost).is_none_or(|remaining| remaining < reserve) {
+					wallet.mark_output_keys_unused(&psbt.unsigned_tx);
+					anyhow::bail!("pool issuance deferred to preserve {} sats of on-chain payout liquidity", reserve.to_sat());
+				}
+				Ok(psbt)
 			},
 		).await?;
 

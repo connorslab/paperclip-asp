@@ -273,6 +273,14 @@ impl PersistedWallet {
 		self.wallet.trusted_balance(self.min_trusted_confs)
 	}
 
+	/// Trusted funds not already reserved by an in-flight operation.
+	pub fn available_balance(&self) -> Amount {
+		let canon = TrustedCanonicalization::from_wallet(&self.wallet, self.min_trusted_confs);
+		let locked = self.locked_outputs.utxos();
+		canon.list_unspent().filter(|u| u.is_trusted && !locked.contains(&u.outpoint))
+			.map(|u| u.txout.value).sum()
+	}
+
 	/// Check if the wallet has at least the given amount of trusted funds.
 	pub fn has_trusted_balance(&self, amount: Amount) -> bool {
 		self.balance().trusted >= amount

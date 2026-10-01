@@ -103,6 +103,10 @@ impl ToStatus for anyhow::Error {
 			tonic::Status::with_metadata(tonic::Code::InvalidArgument, format!("{:#}", self), metadata)
 		} else if let Some(_) = self.downcast_ref::<BadArgument>() {
 			tonic::Status::invalid_argument(format!("{:#}", self))
+		} else if matches!(self.downcast_ref::<bdk_wallet::error::CreateTxError>(),
+			Some(bdk_wallet::error::CreateTxError::CoinSelection(_))) {
+			warn!("Server on-chain liquidity unavailable: {:#}", self);
+			tonic::Status::unavailable("server temporarily lacks spendable on-chain liquidity; retry the existing request later")
 		} else {
 			// Without rich errors the client only sees "internal error",
 			// so this is the only place that records the cause.
@@ -221,5 +225,25 @@ fn validate_pver<T>(req: &tonic::Request<T>) -> Result<u64, tonic::Status> {
 	}
 
 	Ok(pver)
+}
+
+#[cfg(test)]
+mod liquidity_tests {
+	use super::ToStatus;
+	use bitcoin::Amount;
+
+	#[test]
+	fn insufficient_server_funds_are_retryable_without_exposing_balances() {
+		let error = anyhow::Error::new(bdk_wallet::error::CreateTxError::CoinSelection(
+			bdk_wallet::coin_selection::InsufficientFunds {
+				needed: Amount::from_sat(13_671), available: Amount::from_sat(833),
+			},
+		)).context("attempt 1").context("failed to build offboard tx");
+		let status = error.to_status();
+		assert_eq!(status.code(), tonic::Code::Unavailable);
+		assert!(status.message().contains("on-chain liquidity"));
+		assert!(!status.message().contains("833"));
+		assert_eq!(anyhow::anyhow!("unrelated failure").to_status().code(), tonic::Code::Internal);
+	}
 }
 

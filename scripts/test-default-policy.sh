@@ -40,7 +40,7 @@ p=Path('testing/src/daemon/barkd.rs')
 p.write_text(p.read_text().replace('SendRequest {', 'SendRequest { max_total_sat: None,'))
 p=Path('testing/src/context/mod.rs')
 t=p.read_text(); t=t.replace('\n\t\t\tcln_array,', '\n\t\t\texperimental_funded_lightning: false,\n\t\t\texperimental_bolt12_receive: false,\n\t\t\tcln_array,', 1)
-p.write_text(t)
+p.write_text(t.replace('vtxopool: server::vtxopool::Config {', 'vtxopool: server::vtxopool::Config {\n\t\t\t\tonchain_reserve_sat: 0,'))
 p=Path('testing/src/daemon/captaind/proxy.rs')
 t=p.read_text()
 marker='impl<T: ArkRpcProxy> rpc::server::ArkService for ArkRpcProxyWrapper<T> {'
