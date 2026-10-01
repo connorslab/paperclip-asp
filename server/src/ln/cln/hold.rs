@@ -20,7 +20,7 @@
 
 use std::str::FromStr;
 use std::fmt;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -61,14 +61,14 @@ pub struct ClnHoldConfig {
 }
 
 /// Ask `hold.list` for exactly the payment hashes we care about and return
-/// the subset whose invoice is in Accepted state. Replaces a full-list
+/// their current states. Replaces a full-list
 /// pagination + client-side filter.
-async fn fetch_accepted_payment_hashes(
+async fn fetch_payment_states(
 	hold_client: &mut HoldClient<Channel>,
 	payment_hashes: Vec<Vec<u8>>,
-) -> anyhow::Result<HashSet<sha256::Hash>> {
+) -> anyhow::Result<HashMap<sha256::Hash, InvoiceState>> {
 	if payment_hashes.is_empty() {
-		return Ok(HashSet::new());
+		return Ok(HashMap::new());
 	}
 
 	let req = hold::ListRequest {
@@ -78,18 +78,16 @@ async fn fetch_accepted_payment_hashes(
 	};
 	let res = hold_client.list(req).await?.into_inner();
 
-	let mut accepted = HashSet::new();
+	let mut states = HashMap::new();
 	for inv in &res.invoices {
-		if inv.state != InvoiceState::Accepted as i32 {
-			continue;
-		}
+		let Ok(state) = InvoiceState::try_from(inv.state) else { continue; };
 		match sha256::Hash::from_slice(&inv.payment_hash) {
-			Ok(h) => { accepted.insert(h); },
+			Ok(h) => { states.insert(h, state); },
 			Err(e) => warn!("hold plugin returned invalid payment_hash \
 				(len {}, id {}): {}", inv.payment_hash.len(), inv.id, e),
 		}
 	}
-	Ok(accepted)
+	Ok(states)
 }
 
 pub struct ClnHold {
@@ -330,8 +328,10 @@ impl ClnHoldProcess {
 
 		let invoice = match Invoice::from_str(&accepted_invoice.invoice) {
 			Ok(invoice) => {
-				debug_assert_eq!(htlc_subscription.invoice, invoice,
-					"HTLC subscription invoice != hold plugin response's invoice");
+				if htlc_subscription.invoice != invoice {
+					warn!("Hold invoice does not match subscription {}", htlc_subscription.id);
+					return Ok(false);
+				}
 				invoice
 			},
 			Err(e) => {
@@ -420,18 +420,22 @@ impl ClnHoldProcess {
 		let payment_hashes = created_subs.iter()
 			.map(|s| s.invoice.payment_hash().to_vec())
 			.collect::<Vec<_>>();
-		let accepted_hashes = fetch_accepted_payment_hashes(
+		let states = fetch_payment_states(
 			&mut hold_client, payment_hashes,
 		).await?;
 
-		debug!("poll_htlc_state_updates: {} created subs, {} accepted invoices in plugin",
-			created_subs.len(), accepted_hashes.len(),
+		debug!("poll_htlc_state_updates: {} created subs, {} invoices in plugin",
+			created_subs.len(), states.len(),
 		);
 
 		for htlc_subscription in created_subs {
 			let payment_hash = &htlc_subscription.invoice.payment_hash().to_sha256_hash();
-			if accepted_hashes.contains(payment_hash) {
-				self.handle_invoice_accepted(&htlc_subscription).await?;
+			match states.get(payment_hash) {
+				Some(InvoiceState::Accepted) => { self.handle_invoice_accepted(&htlc_subscription).await?; },
+				Some(InvoiceState::Cancelled) => {
+					self.cancel_htlc_subscription(&htlc_subscription, "hold invoice canceled before acceptance").await?;
+				},
+				_ => {},
 			}
 		}
 
@@ -458,19 +462,25 @@ impl ClnHoldProcess {
 		Duration::from_secs((base * 2u64.pow(attempt.min(6))).min(max))
 	}
 
-	/// Handle a TrackAll stream event - process invoice acceptance.
+	/// Reconcile acceptance or cancellation before any HTLC grant.
 	async fn handle_track_all_event(&mut self, response: hold::TrackAllResponse) -> anyhow::Result<()> {
 		let payment_hash = sha256::Hash::from_slice(&response.payment_hash)?;
 		let state = hold::InvoiceState::try_from(response.state).ok();
 
-		if state == Some(hold::InvoiceState::Accepted) {
+		if matches!(state, Some(InvoiceState::Accepted | InvoiceState::Cancelled)) {
 			if let Some(sub) = self.db
 				.read(async |t| t.get_open_htlc_subscription_for_node_by_payment_hash(
 					self.node_id,
 					&PaymentHash::from(payment_hash),
 				).await).await?
 			{
-				self.handle_invoice_accepted(&sub).await?;
+				if state == Some(InvoiceState::Accepted) {
+					self.handle_invoice_accepted(&sub).await?;
+				} else if sub.status == LightningHtlcSubscriptionStatus::Created {
+					// Intra-Ark receives intentionally cancel the external hold after
+					// accepting the internal payment. Never cancel Accepted/HtlcsReady.
+					self.cancel_htlc_subscription(&sub, "hold invoice canceled before acceptance").await?;
+				}
 			}
 		}
 		Ok(())

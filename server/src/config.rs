@@ -314,6 +314,9 @@ pub struct Config {
 	/// Private test opt-in; requires funded HTLC recovery and an XBT hold plugin.
 	#[serde(default)]
 	pub experimental_funded_lightning: bool,
+	/// Enable wallet-owned reusable BOLT12 receive sessions.
+	#[serde(default)]
+	pub experimental_bolt12_receive: bool,
 	#[serde(with = "utils::serde::duration")]
 	pub cln_reconnect_interval: Duration,
 	#[serde(with = "utils::serde::duration")]

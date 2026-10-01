@@ -419,6 +419,28 @@ impl rpc::server::ArkService for Server {
 		}))
 	}
 
+	async fn get_lightning_offer_info(&self, _req: tonic::Request<protos::Empty>) -> Result<tonic::Response<protos::LightningOfferInfo>, tonic::Status> {
+		if !self.config.experimental_bolt12_receive { return Err(tonic::Status::unimplemented("BOLT12 receiving is not enabled")); }
+		let node = self.lightning_manager.hold_active_node().ok_or_else(|| tonic::Status::unavailable("Lightning relay offline"))?;
+		Ok(tonic::Response::new(protos::LightningOfferInfo {
+			relay_pubkey: node.pubkey.serialize().to_vec(),
+			maximum_sat: self.config.max_ln_receive_amount.map(|a| a.to_sat()).unwrap_or(250_000),
+			block_height: u32::from(self.chain_tip().height),
+		}))
+	}
+
+	type ServeLightningOffersStream = crate::ln::offers::OfferStream;
+	async fn serve_lightning_offers(&self, req: tonic::Request<tonic::Streaming<protos::LightningOfferClient>>) -> Result<tonic::Response<Self::ServeLightningOffersStream>, tonic::Status> {
+		if !self.config.experimental_bolt12_receive { return Err(tonic::Status::unimplemented("BOLT12 receiving is not enabled")); }
+		Ok(tonic::Response::new(self.lightning_manager.offer_relay.serve(req.into_inner(), self.db.clone())))
+	}
+
+	async fn register_bolt12_receive(&self, req: tonic::Request<protos::RegisterBolt12ReceiveRequest>) -> Result<tonic::Response<protos::Empty>, tonic::Status> {
+		if !self.config.experimental_bolt12_receive { return Err(tonic::Status::unimplemented("BOLT12 receiving is not enabled")); }
+		self.register_bolt12_receive_inner(req.into_inner()).await.to_status()?;
+		Ok(tonic::Response::new(protos::Empty {}))
+	}
+
 	#[tracing::instrument(skip(self, req), fields(
 		amount_sats = ?req.get_ref().amount_sat
 	))]

@@ -84,6 +84,7 @@ enum PayInvoiceRace {
 
 /// Handle for the cln manager process.
 pub struct LightningManager {
+	pub(crate) offer_relay: Arc<super::offers::OfferRelay>,
 	db: database::Db,
 	settler: Arc<HtlcSettler>,
 	invoice_poll_interval: Duration,
@@ -127,6 +128,11 @@ impl LightningManager {
 		let (payment_update_tx, payment_update_rx) = broadcast::channel(256);
 		let node_handles = Arc::new(parking_lot::RwLock::new(Vec::new()));
 
+		let offer_relay = Arc::new(super::offers::OfferRelay::default());
+		if config.experimental_bolt12_receive {
+			tokio::spawn(offer_relay.clone().run(node_handles.clone(), rtmgr.clone()));
+		}
+
 		let hold_config = ClnHoldConfig {
 			invoice_check_interval: config.invoice_check_interval,
 			receive_htlc_forward_timeout: config.receive_htlc_forward_timeout,
@@ -166,6 +172,7 @@ impl LightningManager {
 		tokio::spawn(proc.run(config.cln_reconnect_interval));
 
 		Ok(LightningManager {
+			offer_relay,
 			db,
 			settler,
 			mailbox_manager,
@@ -204,7 +211,7 @@ impl LightningManager {
 	}
 
 	/// The highest-priority online node that supports hold invoices, if any.
-	fn hold_active_node(&self) -> Option<NodeHandle> {
+	pub(crate) fn hold_active_node(&self) -> Option<NodeHandle> {
 		self.node_handles.read().iter()
 			.filter(|h| h.hold_rpc.is_some())
 			.min_by_key(|h| h.priority)

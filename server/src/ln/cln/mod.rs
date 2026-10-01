@@ -51,6 +51,7 @@ type ClnGrpcClient = NodeClient<Channel>;
 /// reflects a node that was online as of the last maintenance pass.
 #[derive(Clone)]
 pub(crate) struct NodeHandle {
+	pub(crate) pubkey: PublicKey,
 	pub(crate) id: LightningNodeId,
 	pub(crate) priority: u8,
 	pub(crate) rpc: ClnGrpcClient,
@@ -77,6 +78,7 @@ impl ClnNodeOnlineState {
 	/// safe to expect it here.
 	pub(crate) fn handle(&self, priority: u8) -> NodeHandle {
 		NodeHandle {
+			pubkey: self.pubkey,
 			id: self.id,
 			priority,
 			rpc: self.rpc.clone(),

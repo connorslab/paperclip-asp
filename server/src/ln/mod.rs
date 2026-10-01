@@ -1,4 +1,5 @@
 pub mod node_manager;
+pub mod offers;
 
 pub mod cln;
 pub mod guard;
@@ -581,6 +582,9 @@ impl Server {
 			t.get_htlc_subscription_by_payment_hash(payment_hash).await
 		).await?;
 		if let Some(subscription) = subscription {
+			if !matches!(subscription.invoice, Invoice::Bolt11(_)) {
+				return badarg!("payment hash already belongs to a BOLT12 receive");
+			}
 			match subscription.status {
 				LightningHtlcSubscriptionStatus::Created => {
 					trace!("Found existing created subscription, returning invoice: {}",

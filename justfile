@@ -21,3 +21,6 @@ int-pruned:
 
 int-pruned-lifecycle:
 	bash scripts/test-pruned.sh
+
+int-bolt12:
+	bash scripts/test-bolt12.sh
