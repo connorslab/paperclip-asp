@@ -9,7 +9,6 @@ use anyhow::Context;
 use bitcoin::Amount;
 use bitcoin::secp256k1::PublicKey;
 use chrono::{DateTime, Local};
-use lightning_invoice::Bolt11Invoice;
 use tracing::{debug, trace, warn};
 use ark::VtxoId;
 use ark::lightning::{Invoice, PaymentHash, Preimage};
@@ -423,7 +422,7 @@ impl<'t> Tx<'t> {
 	pub async fn store_generated_lightning_receive(
 		&self,
 		node_id: LightningNodeId,
-		invoice: &Bolt11Invoice,
+		invoice: &Invoice,
 		amount_msat: u64,
 		receiver_mailbox_id: Option<&MailboxIdentifier>,
 		user_agent: Option<&str>,

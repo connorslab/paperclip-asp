@@ -430,7 +430,7 @@ impl LightningManager {
 			});
 		}
 
-		let payment_hash = PaymentHash::from(&subscription.invoice);
+		let payment_hash = subscription.invoice.payment_hash();
 		// Wake check_lightning_receive so the client sees Accepted.
 		let _ = self.payment_update_tx.send(payment_hash);
 
@@ -552,7 +552,7 @@ impl LightningManager {
 
 		self.db.write(async |t|
 			t.store_generated_lightning_receive(
-				node.id, &invoice, amount.to_msat(), receiver_mailbox_id.as_ref(),
+				node.id, &Invoice::Bolt11(invoice.clone()), amount.to_msat(), receiver_mailbox_id.as_ref(),
 				user_agent.as_deref(),
 			).await
 		).await?;
@@ -650,7 +650,7 @@ impl LightningManager {
 		subscription: LightningHtlcSubscription,
 	) -> anyhow::Result<()> {
 		let id = subscription.id;
-		let payment_hash = PaymentHash::from(*subscription.invoice.payment_hash());
+		let payment_hash = subscription.invoice.payment_hash();
 
 		// Cancel on the node that created the subscription.
 		let mut hold_client = self.node_by_id(subscription.lightning_node_id)

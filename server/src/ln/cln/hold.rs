@@ -29,14 +29,13 @@ use anyhow::Context;
 use bitcoin::hashes::{sha256, Hash};
 use chrono::Local;
 use futures::Stream;
-use lightning_invoice::Bolt11Invoice;
 use tokio::sync::{broadcast, Notify};
 use tokio::task::JoinHandle;
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tracing::{debug, error, info, warn};
 
-use ark::lightning::PaymentHash;
+use ark::lightning::{Invoice, PaymentHash};
 use ark::vtxo::policy::{check_block_delta, check_block_height};
 use bitcoin_ext::BlockDelta;
 use cln_rpc::plugins::hold::{self, InvoiceState};
@@ -216,7 +215,7 @@ impl ClnHoldProcess {
 		telemetry::set_open_invoices(self.node_id, &status_counts);
 
 		for htlc_subscription in htlc_subscriptions {
-			let payment_hash = htlc_subscription.invoice.payment_hash();
+			let payment_hash = &htlc_subscription.invoice.payment_hash().to_sha256_hash();
 
 			// Check for HTLC timeout: subscription held too long in Accepted state.
 			// We use our `accepted_at` timestamp rather than the hold plugin's HTLC
@@ -255,7 +254,7 @@ impl ClnHoldProcess {
 			}
 
 			// Cancel invoice & subscription if invoice expired
-			if htlc_subscription.invoice.is_expired() {
+			if htlc_subscription.invoice.expired_at(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?) {
 				self.cancel_invoice_and_htlc_subscription(
 					&mut hold_client,
 					payment_hash,
@@ -288,7 +287,7 @@ impl ClnHoldProcess {
 			},
 		};
 
-		let payment_hash = htlc_subscription.invoice.payment_hash();
+		let payment_hash = &htlc_subscription.invoice.payment_hash().to_sha256_hash();
 
 		// Fetch HTLC details (TrackAllResponse only provides state, not HTLC details)
 		let req = hold::ListRequest {
@@ -329,7 +328,7 @@ impl ClnHoldProcess {
 			},
 		};
 
-		let invoice = match Bolt11Invoice::from_str(&accepted_invoice.invoice) {
+		let invoice = match Invoice::from_str(&accepted_invoice.invoice) {
 			Ok(invoice) => {
 				debug_assert_eq!(htlc_subscription.invoice, invoice,
 					"HTLC subscription invoice != hold plugin response's invoice");
@@ -345,7 +344,11 @@ impl ClnHoldProcess {
 		let tip = self.sync_manager.chain_tip().height;
 
 		// NB: We subtract 1 to give some buffer for the lightning payment to be sent.
-		let min_final_cltv_expiry_delta = check_block_delta(invoice.min_final_cltv_expiry_delta())
+		let min_final_cltv_expiry_delta = check_block_delta(match &invoice {
+			Invoice::Bolt11(i) => i.min_final_cltv_expiry_delta(),
+			Invoice::Bolt12(_) => accepted_invoice.min_cltv_expiry
+				.context("BOLT12 hold invoice has no minimum CLTV")?,
+		})
 			.context("invoice min_final_cltv_expiry_delta out of range")?;
 		let required_min_htlc_expiry = tip
 			.checked_add(min_final_cltv_expiry_delta)
@@ -376,13 +379,13 @@ impl ClnHoldProcess {
 			return Ok(false);
 		}
 
-		let payment_hash = PaymentHash::from(*htlc_subscription.invoice.payment_hash());
+		let payment_hash = htlc_subscription.invoice.payment_hash();
 		// Wake check_lightning_receive so the client sees the new status.
 		let _ = self.payment_update_tx.send(payment_hash);
 
 		if status == LightningHtlcSubscriptionStatus::Accepted {
 			// Post mailbox notification so the client knows to come online and claim
-			let payment_hash = PaymentHash::from(*htlc_subscription.invoice.payment_hash());
+			let payment_hash = htlc_subscription.invoice.payment_hash();
 			post_lightning_receive_notification(
 				&self.db, &self.mailbox_manager, payment_hash, htlc_subscription.amount(),
 			).await;
@@ -415,7 +418,7 @@ impl ClnHoldProcess {
 		}
 
 		let payment_hashes = created_subs.iter()
-			.map(|s| s.invoice.payment_hash().to_byte_array().to_vec())
+			.map(|s| s.invoice.payment_hash().to_vec())
 			.collect::<Vec<_>>();
 		let accepted_hashes = fetch_accepted_payment_hashes(
 			&mut hold_client, payment_hashes,
@@ -426,7 +429,7 @@ impl ClnHoldProcess {
 		);
 
 		for htlc_subscription in created_subs {
-			let payment_hash = htlc_subscription.invoice.payment_hash();
+			let payment_hash = &htlc_subscription.invoice.payment_hash().to_sha256_hash();
 			if accepted_hashes.contains(payment_hash) {
 				self.handle_invoice_accepted(&htlc_subscription).await?;
 			}

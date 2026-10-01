@@ -84,15 +84,14 @@ pub(crate) fn validate_intra_ark_payment(
 	invoice: &Invoice,
 	payment_amount: Amount,
 ) -> anyhow::Result<()> {
-	// An honest sender pays the exact bolt11 we issued for this payment hash.
+	// An honest sender pays the exact invoice we issued for this payment hash.
 	// Demanding equality also rejects forgeries that keep the payment hash but
 	// change any other field, like the amount or the expiry.
-	match invoice {
-		Invoice::Bolt11(bolt11) if *bolt11 == subscription.invoice => {},
-		_ => return badarg!(
+	if *invoice != subscription.invoice {
+		return badarg!(
 			"invoice does not match the invoice we issued for payment hash {}",
 			subscription.payment_hash,
-		),
+		);
 	}
 
 	// The invoice equality above already implies this, but the payout to the
@@ -1012,7 +1011,7 @@ mod tests {
 			id: 1,
 			lightning_node_id: 1,
 			payment_hash: PaymentHash::from(&invoice),
-			invoice: invoice,
+			invoice: invoice.into(),
 			status: LightningHtlcSubscriptionStatus::Created,
 			lowest_incoming_htlc_expiry: None,
 			accepted_at: None,
@@ -1034,6 +1033,20 @@ mod tests {
 		// Overpaying is fine, we keep the difference.
 		validate_intra_ark_payment(&sub, &invoice, Amount::from_sat(1500)).expect("overpayment");
 		validate_intra_ark_payment(&sub, &invoice, Amount::from_sat(999)).expect_err("underpayment");
+	}
+
+	#[test]
+	fn intra_ark_payment_matches_bolt12_invoice_and_amount() {
+		let invoice = Invoice::try_from(include_str!(concat!(
+			env!("CARGO_MANIFEST_DIR"), "/../lib/testdata/bolt12-invoice.txt"
+		)).trim()).unwrap();
+		let mut sub = test_subscription(test_invoice(sha256::Hash::hash(b"test"), 1_000_000, 1));
+		sub.payment_hash = invoice.payment_hash();
+		sub.invoice = invoice.clone();
+		validate_intra_ark_payment(&sub, &invoice, sub.amount()).unwrap();
+		validate_intra_ark_payment(&sub, &invoice, Amount::ZERO).expect_err("underpayment");
+		let other = Invoice::Bolt11(test_invoice(sub.payment_hash.to_sha256_hash(), 1_000, 2));
+		validate_intra_ark_payment(&sub, &other, sub.amount()).expect_err("different signed invoice");
 	}
 
 	/// A sender who forges a cheaper invoice on the receiver's payment hash
