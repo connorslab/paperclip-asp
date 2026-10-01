@@ -10,7 +10,8 @@ async fn xbt_offboard_payout_reserve() {
 	let srv = ctx.captaind("asp").funded(sat(500_000)).cfg(|c| {
 		c.experimental_funded_lightning = true;
 		c.vtxopool.onchain_reserve_sat = 450_000;
-		c.vtxopool.vtxo_targets = vec![VtxoTarget { amount: sat(200_000), count: 1 }];
+		// Single-leaf issuances are skipped; use two to exercise funding selection.
+		c.vtxopool.vtxo_targets = vec![VtxoTarget { amount: sat(200_000), count: 2 }];
 	}).create().await;
 	let wallet = ctx.bark("withdrawer", &srv).funded(sat(150_000)).create().await;
 	wallet.board_and_confirm_and_register(&ctx, sat(100_000)).await;
