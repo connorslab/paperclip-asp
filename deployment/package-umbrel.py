@@ -21,7 +21,7 @@ out = args.output
 out.mkdir(parents=True, exist_ok=False)
 app = args.app_id
 manifest = {
-    'manifestVersion': 1, 'id': app, 'name': 'Paperclip ASP', 'version': '0.7.1',
+    'manifestVersion': 1, 'id': app, 'name': 'Paperclip ASP', 'version': '0.7.2',
     'tagline': 'Private XBT Ark service test', 'category': 'bitcoin', 'port': 38181,
     'description': 'Experimental ASP and watchman with a dedicated PostgreSQL database. Authenticated operator status and explicit first-run initialization. Funded XBT Lightning is available with explicit test configuration, a private CLN hold backend, and channel/pool liquidity.',
     'developer': 'Paperclip', 'website': 'https://github.com/connorslab/paperclip-asp',

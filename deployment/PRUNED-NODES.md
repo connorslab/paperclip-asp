@@ -78,3 +78,9 @@ The real-node fixture creates two isolated regtest nodes. It deletes historical
 block files through pruning, retrieves a transaction from a full peer, restarts
 the index, replaces a chain tip, and removes peer access. No mainnet wallet is
 used. Evidence remains under `.state/pruned-tests`.
+
+## Private remote backend relay
+
+`production-rpc-relay.py` is the production loopback relay for a remote XBT node. It expects `/etc/paperclip-ark-rpc/token` and `/var/lib/bitcoin/.cookie`, listens on loopback port 18337, and must be reached through a private tunnel. It allows two backend requests at once, waits up to ten seconds for a slot, and returns RPC error -28 on overload. It does not expose wallet RPC.
+
+Adapters retry transient busy responses only for read-only fee estimation. Broadcast requests are never automatically replayed.
