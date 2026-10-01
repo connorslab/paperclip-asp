@@ -1,13 +1,22 @@
 # Paperclip ASP
 
-Private experimental XBT Ark Service Provider based on Bark by Second and the Bark
+Experimental XBT Ark Service Provider based on Bark by Second and the Bark
 contributors. This repository contains the server and its shared dependencies.
-The wallet and web interface are in `connorslab/paperclip-wallet`.
+The wallet and web interface are in `connorslab/paperclip-wallet-app`.
 
-Funded Lightning is available with explicit private-test opt-in; see [current implementation and activation requirements](LIGHTNING.md).
+Paperclip runs this server in public beta. Funded Lightning requires explicit
+configuration; see [implementation and activation requirements](LIGHTNING.md).
+Reusable BOLT12 receiving requires `experimental_bolt12_receive` and a compatible
+wallet service that stays online. Existing BOLT11 wallets remain supported.
 
 **Experimental. Regtest by default; mainnet requires explicit opt-in.** See
-`MAINNET.md`. Mainnet transaction validation is not yet complete.
+`MAINNET.md`. This software is not independently audited and has no warranty.
+Functional tests do not guarantee security or recovery.
+
+The current release adds reusable BOLT12 receiving and a configurable
+[on-chain payout reserve](docs/payout-liquidity.md). Paid BOLT12 settlement,
+cancellation, restart, failure recovery, and old-wallet compatibility passed XBT
+regtest tests. Live mainnet checks verified offer/invoice exchange without payment.
 
 ## Build
 
