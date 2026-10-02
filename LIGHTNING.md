@@ -108,3 +108,27 @@ Example private CLN entry in `cln_array` (matching certificate SANs):
 Validate before restarting: `paperclip-asp check-config /config/asp.json`.
 Each private credential directory is mode 0700; files are mode 0600 owned by the
 application UID. Preserve the original configuration and existing wallet data.
+
+## Receive recovery time
+
+An external Lightning HTLC can reach the node before the Ark server prepares
+its receive VTXOs. Pool selection must check recovery time before it selects
+inputs. The required deadline is the current height plus the output exit depth,
+the exit delay, the HTLC recovery delay, and a 12-block margin. Both the HTLC
+expiry and the VTXO expiry must be strictly later than this deadline.
+
+A funded receive adds two transactions to the input exit path. The selector
+uses this projected depth and skips ineligible inputs. The server checks the
+actual output again before it stores the receive. Do not remove this check.
+
+The pool replenishment cutoff is the larger of `vtxo_pre_expiry` and the
+recovery window calculated with `max_vtxo_exit_depth + 2`. The configured pool
+lifetime must exceed this cutoff. Replenishment preserves `onchain_reserve_sat`.
+Expired-soon pool outputs remain subject to normal recovery; skipping them
+does not destroy or abandon their sats.
+
+Run `just unit-server vtxopool` for selection and deadline regressions.
+The isolated `xbt_funded_lightning_receive_after_pool_ages` test advances 240
+blocks with production-like recovery delays, restarts the server, and verifies
+an external 10,000-sat receive. This is a regtest check, not proof of mainnet
+LND interoperability. A canceled invoice must be replaced before a retest.
