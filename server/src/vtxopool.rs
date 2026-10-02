@@ -221,7 +221,8 @@ impl Data {
 		let mut ret = Vec::<(VtxoId, BlockHeight, Amount)>::new();
 		'main:
 		for (height, for_height) in self.pool.iter_mut() {
-			let mut amount_iter = for_height.iter_mut().rev().peekable();
+			let mut amount_iter = for_height.iter_mut().rev()
+				.filter(|(_, ids)| ids.iter().any(&eligible)).peekable();
 			while let Some((amount, for_amount)) = amount_iter.next() {
 				let next_amount = amount_iter.peek().map(|p| *p.0).unwrap_or(Amount::ZERO);
 				while !for_amount.is_empty() && remaining > next_amount {
@@ -728,6 +729,8 @@ impl Process {
 			+ u32::from(self.srv.config.vtxo_exit_delta.to_u16())
 			+ u32::from(self.srv.config.htlc_expiry_delta.to_u16()) + 12;
 		let window = recovery_window.max(u32::from(self.config.vtxo_pre_expiry.to_u16()));
+		ensure!(window < u32::from(self.config.vtxo_lifetime.to_u16()),
+			"pool lifetime must exceed receive recovery and pre-expiry windows");
 		let threshold = BlockHeight::new(tip.to_u32().checked_add(window)
 			.context("pool refresh threshold overflow")?);
 
@@ -836,6 +839,10 @@ mod test {
 		assert_eq!(data.len(), 2);
 		assert!(data.take_inputs(sat(1), |_| false).is_empty());
 		assert_eq!(data.len(), 2);
+		// An ineligible smaller denomination must not hide an eligible larger one.
+		data.insert(id(3), h(200), sat(100000));
+		assert_eq!(data.take_inputs(sat(10000), |v| *v == id(2)),
+			vec![(id(2), h(200), sat(300000))]);
 	}
 
 	#[test]
