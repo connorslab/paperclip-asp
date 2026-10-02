@@ -170,3 +170,36 @@ async fn xbt_funded_lightning_empty_pool_keeps_preimage_private() {
 	}).await.unwrap();
 	assert!(tokio::time::timeout(Duration::from_secs(15), payment).await.unwrap().unwrap().is_err());
 }
+
+#[tokio::test]
+async fn xbt_funded_lightning_receive_after_pool_ages() {
+	let ctx = TestContext::new("xbt/ln-aged-pool").await;
+	let ln = ctx.new_lightning_setup("ln").await;
+	let srv = ctx.captaind("asp").lightningd(&ln.internal).funded(btc(2))
+		.cfg(|c| {
+			c.experimental_funded_lightning = true;
+			c.vtxo_exit_delta = bitcoin_ext::BlockDelta::new(144);
+			c.htlc_expiry_delta = bitcoin_ext::BlockDelta::new(40);
+			c.max_user_invoice_cltv_delta = bitcoin_ext::BlockDelta::new(250);
+			c.htlc_send_expiry_delta = bitcoin_ext::BlockDelta::new(258);
+			c.vtxopool.vtxo_lifetime = bitcoin_ext::BlockDelta::new(432);
+			c.vtxopool.vtxo_pre_expiry = bitcoin_ext::BlockDelta::new(144);
+			c.vtxopool.vtxo_targets = vec![VtxoTarget { amount: sat(300_000), count: 2 }];
+		}).create().await;
+	srv.wait_for_vtxopool(&ctx).await;
+	// Old outputs now pass the old 144-block cutoff but fail recovery headroom.
+	srv.stop().await.unwrap();
+	ctx.generate_blocks(240).await;
+	srv.start().await.unwrap();
+	srv.wait_for_vtxopool(&ctx).await;
+	let wallet = ctx.bark("receiver", &srv).funded(sat(100_000)).create().await;
+	wallet.board_and_confirm_and_register(&ctx, sat(50_000)).await;
+	ln.sync().await;
+	let before = wallet.spendable_balance().await;
+	let invoice = wallet.bolt11_invoice(sat(10_000)).await;
+	tokio::join!(
+		ln.external.pay_bolt11(&invoice.invoice),
+		wallet.lightning_receive(&invoice.invoice).wait_millis(60_000),
+	);
+	assert_eq!(wallet.spendable_balance().await, before + sat(6_000));
+}
