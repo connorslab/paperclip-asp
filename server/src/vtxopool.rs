@@ -1,6 +1,6 @@
 
 use std::{fmt, str};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{self, AtomicBool};
 use std::time::Duration;
@@ -204,6 +204,7 @@ impl Data {
 	pub fn take_inputs(
 		&mut self,
 		required_amount: Amount,
+		eligible: impl Fn(&VtxoId) -> bool,
 	) -> Vec<(VtxoId, BlockHeight, Amount)> {
 		// The strategy here is to always prioritize expiry.
 		// For each expiry "bucket", pick the highest amount if the
@@ -224,7 +225,8 @@ impl Data {
 			while let Some((amount, for_amount)) = amount_iter.next() {
 				let next_amount = amount_iter.peek().map(|p| *p.0).unwrap_or(Amount::ZERO);
 				while !for_amount.is_empty() && remaining > next_amount {
-					let id = for_amount.pop().unwrap();
+					let Some(index) = for_amount.iter().rposition(&eligible) else { break; };
+					let id = for_amount.swap_remove(index);
 					ret.push((id, *height, *amount));
 					remaining = remaining.checked_sub(*amount).unwrap_or(Amount::ZERO);
 					if remaining == Amount::ZERO {
@@ -274,6 +276,16 @@ fn check_change_outputs(change: Vec<Vtxo<Full>>) -> anyhow::Result<Vec<Vtxo<Full
 	}
 
 	Ok(change.into_iter().chain(dust_change.into_iter()).collect())
+}
+
+/// Both deadlines must leave room for the complete unilateral recovery path.
+fn pool_receive_has_headroom(
+	tip: u32, output_depth: u32, exit_delta: u32, htlc_delta: u32,
+	htlc_expiry: u32, vtxo_expiry: u32,
+) -> bool {
+	tip.checked_add(output_depth).and_then(|h| h.checked_add(exit_delta))
+		.and_then(|h| h.checked_add(htlc_delta)).and_then(|h| h.checked_add(12))
+		.is_some_and(|deadline| deadline < htlc_expiry && deadline < vtxo_expiry)
 }
 
 pub struct VtxoPool {
@@ -339,13 +351,10 @@ impl VtxoPool {
 
 		for vtxo in &sent {
 			let VtxoPolicy::ServerHtlcRecv(p) = vtxo.policy() else { bail!("invalid pool destination"); };
-			let deadline = u32::try_from(vtxo.exit_depth()).context("pool exit depth overflow")?
-				.checked_add(srv.chain_tip().height.to_u32())
-				.and_then(|h| h.checked_add(u32::from(vtxo.exit_delta().to_u16())))
-				.and_then(|h| h.checked_add(u32::from(p.htlc_expiry_delta.to_u16()) + 12))
-				.context("pool recovery deadline overflow")?;
-			ensure!(deadline < p.htlc_expiry.to_u32() && deadline < vtxo.expiry_height().to_u32(),
-				"pool HTLC has insufficient recovery headroom");
+			ensure!(pool_receive_has_headroom(srv.chain_tip().height.to_u32(),
+				u32::from(vtxo.exit_depth()), u32::from(vtxo.exit_delta().to_u16()),
+				u32::from(p.htlc_expiry_delta.to_u16()), p.htlc_expiry.to_u32(),
+				vtxo.expiry_height().to_u32()), "pool HTLC has insufficient recovery headroom");
 		}
 		let change = check_change_outputs(change)?;
 
@@ -425,6 +434,20 @@ impl VtxoPool {
 		srv: &Server,
 		dest: ArkoorDestination,
 	) -> anyhow::Result<Vec<Vtxo<Full>>> {
+		let VtxoPolicy::ServerHtlcRecv(policy) = &dest.policy else {
+			bail!("invalid pool destination");
+		};
+		// Snapshot candidates without holding the mutex across database I/O.
+		let ids = self.data.lock().pool.values().flat_map(|bucket| bucket.values())
+			.flatten().copied().collect::<Vec<_>>();
+		let candidates = srv.db.read(async |t| t.get_pool_vtxos_by_ids(&ids).await).await?;
+		let tip = srv.chain_tip().height.to_u32();
+		let eligible = candidates.iter().filter(|v| {
+			// A funded receive adds a checkpoint and an HTLC transaction.
+			pool_receive_has_headroom(tip, u32::from(v.exit_depth()) + 2,
+				u32::from(v.exit_delta().to_u16()), u32::from(policy.htlc_expiry_delta.to_u16()),
+				policy.htlc_expiry.to_u32(), v.expiry_height().to_u32())
+		}).map(|v| v.id()).collect::<HashSet<_>>();
 		let inputs = {
 			let mut data = self.data.lock();
 			let mut count = 1u64;
@@ -432,14 +455,14 @@ impl VtxoPool {
 				let reserve = ark::exit_policy::paperclip_funding().per_transaction()
 					.checked_mul(3 * count).context("pool reserve overflow")?;
 				let required = dest.total_amount.checked_add(reserve).context("pool amount overflow")?;
-				let inputs = data.take_inputs(required);
+				let inputs = data.take_inputs(required, |id| eligible.contains(id));
 				if inputs.is_empty() || inputs.len() as u64 <= count { break inputs; }
 				count = inputs.len() as u64;
 				for (id, height, amount) in inputs { data.insert(id, height, amount); }
 			}
 		};
 		if inputs.is_empty() {
-			bail!("vtxo pool is empty");
+			bail!("no Ark receive liquidity with sufficient recovery time; retry after pool replenishment");
 		}
 
 		// we try, but if we fail, we place back the inputs
@@ -700,7 +723,13 @@ impl Process {
 	)]
 	async fn check_maybe_issue_vtxos(&self) -> anyhow::Result<()> {
 		let tip = self.srv.chain_tip().height;
-		let threshold = tip + self.config.vtxo_pre_expiry;
+		// Replenish before outputs become unusable for safe Lightning receives.
+		let recovery_window = u32::from(self.config.max_vtxo_exit_depth) + 2
+			+ u32::from(self.srv.config.vtxo_exit_delta.to_u16())
+			+ u32::from(self.srv.config.htlc_expiry_delta.to_u16()) + 12;
+		let window = recovery_window.max(u32::from(self.config.vtxo_pre_expiry.to_u16()));
+		let threshold = BlockHeight::new(tip.to_u32().checked_add(window)
+			.context("pool refresh threshold overflow")?);
 
 		// NB this needs to be a different method because otherwise borrowck complains
 		// about the mutex not being send even if we add a manual `drop()`
@@ -786,6 +815,30 @@ mod test {
 	}
 
 	#[test]
+	fn test_receive_recovery_headroom() {
+		// Reproduce the expired-soon pool output from the external receive failure.
+		assert!(!pool_receive_has_headroom(975216, 4, 144, 40, 975432, 975373));
+		assert!(pool_receive_has_headroom(975216, 4, 144, 40, 975432, 975648));
+		assert!(!pool_receive_has_headroom(100, 4, 144, 40, 300, 500));
+		assert!(!pool_receive_has_headroom(100, 4, 144, 40, 500, 300));
+		assert!(!pool_receive_has_headroom(u32::MAX, 4, 144, 40, u32::MAX, u32::MAX));
+	}
+
+	#[test]
+	fn test_receive_selection_skips_ineligible_and_restores_on_failure() {
+		let mut data = Data { pool: BTreeMap::new() };
+		data.insert(id(1), h(100), sat(300000));
+		data.insert(id(2), h(200), sat(300000));
+		let selected = data.take_inputs(sat(16000), |v| *v == id(2));
+		assert_eq!(selected, vec![(id(2), h(200), sat(300000))]);
+		data.insert(id(2), h(200), sat(300000));
+		assert!(data.take_inputs(sat(400000), |v| *v == id(2)).is_empty());
+		assert_eq!(data.len(), 2);
+		assert!(data.take_inputs(sat(1), |_| false).is_empty());
+		assert_eq!(data.len(), 2);
+	}
+
+	#[test]
 	fn test_vtxo_selection() {
 		let vtxos = [
 			(id(1), h(100), sat(1000)),
@@ -811,25 +864,25 @@ mod test {
 		}
 		assert_eq!(data.len(), len);
 
-		let sel = data.take_inputs(sat(500));
+		let sel = data.take_inputs(sat(500), |_| true);
 		assert_sel(&sel, &[(h(100), sat(1000))]);
 
-		let sel = data.take_inputs(sat(2500));
+		let sel = data.take_inputs(sat(2500), |_| true);
 		assert_sel(&sel, &[(h(100), sat(3000))]);
 
-		let sel = data.take_inputs(sat(1000));
+		let sel = data.take_inputs(sat(1000), |_| true);
 		assert_sel(&sel, &[(h(100), sat(1000))]);
 
 		// the 2x 1000 at height 100 are already used
-		let sel = data.take_inputs(sat(900));
+		let sel = data.take_inputs(sat(900), |_| true);
 		assert_sel(&sel, &[(h(100), sat(2000))]);
 
 		// left at 100: 3000, 2000
-		let sel = data.take_inputs(sat(5500));
+		let sel = data.take_inputs(sat(5500), |_| true);
 		assert_sel(&sel, &[(h(100), sat(2000)), (h(100), sat(3000)), (h(110), sat(1000))]);
 
 		let len = data.len();
-		let sel = data.take_inputs(Amount::MAX_MONEY);
+		let sel = data.take_inputs(Amount::MAX_MONEY, |_| true);
 		assert!(sel.is_empty());
 		assert_eq!(data.len(), len);
 	}
