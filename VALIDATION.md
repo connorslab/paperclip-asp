@@ -173,3 +173,28 @@ BOLT11 payment hash: ff0a52d8fd013480dd94af81a4b1f5e744c19a41aaf573561fa44faec3b
 BOLT12 payment hash: d190f1637997bda8201a646799bb4dc6e5987ec2f2eaef1bb9a0e0f689096035
 This completes the private Umbrel mainnet Lightning smoke test. Offline recovery
 remains verified on isolated regtest; no mainnet emergency exit was initiated.
+
+### Receive-pool recovery-time fix — 2026-10-02
+
+Runtime revision: `b8c57e6452f602a3a15e47a1b03f218515195085`.
+The public source also includes the regression fixture and operational notes.
+
+- Workspace checks passed with `just checks`.
+- Three pool unit tests passed with `just unit-server vtxopool`. They cover
+  strict expiry boundaries, arithmetic overflow, ineligible denominations,
+  and restoration of selected inputs when available liquidity is insufficient.
+- The isolated external receive test passed after 240 blocks of pool aging
+  and a server restart. A 10,000-sat invoice settled and credited 6,000 sats
+  under the test's zero-service-fee configuration. The 4,000-sat difference
+  is the funded recovery reserve, not a production fee quote.
+- The production image build and executable checks passed. The deployed
+  revision, admin wallet RPC, and public Ark-info RPC were verified.
+- Recovery safety checks remain enabled. The selector checks the projected
+  output path, and allocation checks the actual output again.
+
+The reported LND mainnet payment requires a fresh invoice and an external
+retest. The old invoice was canceled. These results do not claim that retest
+has occurred or that the software has received an independent audit.
+
+Earlier funding balances and pending-confirmation notes in this document are
+historical checkpoints. They are not current service balances or readiness gates.

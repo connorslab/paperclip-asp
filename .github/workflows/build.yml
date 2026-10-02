@@ -25,6 +25,8 @@ jobs:
         run: nix develop --command just unit standard_v2
       - name: Check XBT Lightning backend admission
         run: nix develop --command just unit-server xbt_backend
+      - name: Check receive pool recovery eligibility
+        run: nix develop --command just unit-server vtxopool
       - name: Check private platform configuration
         run: |
           python3 deployment/test_config.py

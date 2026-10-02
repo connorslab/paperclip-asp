@@ -23,3 +23,17 @@ for insufficient funds.
 Run `scripts/test-offboard-liquidity.sh` in the documented isolated XBT test
 environment to verify that pool issuance preserves the reserve and user
 offboards can still spend it.
+
+## Receive-pool age and replenishment
+
+An unspent pool VTXO is not necessarily eligible for a new Lightning receive.
+The receive path needs enough time before both its HTLC expiry and its VTXO
+expiry to complete recovery. The server excludes inputs that fail this check.
+See [the recovery-time rule](../LIGHTNING.md#receive-recovery-time).
+
+Pool replenishment uses a recovery-aware expiry cutoff. Configure a pool
+lifetime longer than this cutoff. Ensure that the target outputs, their
+recovery reserves, and the funding transaction fee fit above the on-chain
+payout reserve. Otherwise replenishment is deferred even when the wallet
+shows a positive balance. Aging outputs remain available for their normal
+recovery process; they do not count as immediately usable receive capacity.

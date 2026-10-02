@@ -22,6 +22,14 @@ The current release adds reusable BOLT12 receiving and a configurable
 cancellation, restart, failure recovery, and old-wallet compatibility passed XBT
 regtest tests. Live mainnet checks verified offer/invoice exchange without payment.
 
+## Current maintenance fixes
+
+The source includes receive-pool recovery-time selection, earlier pool
+replenishment, and safeguards for the on-chain payout reserve. The receive fix
+is deployed on Paperclip's server. Existing wallet protocols remain unchanged.
+See [receive recovery time](LIGHTNING.md#receive-recovery-time) and
+[validation results](VALIDATION.md#receive-pool-recovery-time-fix--2026-10-02).
+
 ## Build
 
 ```sh
