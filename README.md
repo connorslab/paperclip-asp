@@ -82,3 +82,12 @@ See `PROTOCOL.json`, `UPSTREAM.md` and the original MIT `LICENSE`.
 [Deployment instructions](deployment/README.md) include private configuration, systemd, TLS, and backup requirements.
 
 Profile 2 removes the TRUC/version-3 dependency. See `PROTOCOL.json` and `VALIDATION.md` for the tested scope; mainnet opt-in remains experimental.
+
+## Recovery costs
+
+See [recovery cost accounting and reduction work](docs/recovery-costs.md). Zero
+Ark transfer service fees do not mean zero total cost. Recovery allocations are
+not separately refundable and are not immediate miner fees.
+
+[Deployed version evidence](docs/deployed-version.md) records the current runtime
+identity and the limits of that evidence.

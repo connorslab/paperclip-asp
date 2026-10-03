@@ -10,6 +10,11 @@ COPY . .
 RUN cargo build --locked --release -p bark-server --bin paperclip-asp --bin paperclip-watchman
 
 FROM debian:bookworm-slim
+ARG GIT_HASH=unknown
+ARG SERVER_VERSION=0.0.0-dev
+LABEL org.opencontainers.image.source="https://github.com/connorslab/paperclip-asp" \
+      org.opencontainers.image.revision="${GIT_HASH}" \
+      org.opencontainers.image.version="${SERVER_VERSION}"
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 libsqlite3-0 libpq5 libgcc-s1 python3 tini && rm -rf /var/lib/apt/lists/* && useradd --uid 1000 --create-home paperclip
 COPY --from=build /src/target/release/paperclip-asp /src/target/release/paperclip-watchman /usr/local/bin/
 COPY deployment/prepare-config.py /opt/paperclip/deployment/prepare-config.py
