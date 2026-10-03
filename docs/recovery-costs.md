@@ -16,7 +16,11 @@ This example describes Paperclip pricing, not a protocol-wide fixed service fee.
 
 ## Reduction work
 
-First prefer a valid single input over fragmented inputs. Use the actual package
+The wallet cost-reduction change prefers a valid single input over fragmented
+inputs, then compares valid single inputs for the lowest recovery allocation.
+An exact spend can cost 4,000 sats instead of 6,000 sats with change. This saves
+2,000 sats (one third) when the wallet has a matching input. It does not change
+the server protocol or reduce the minimum cost of arbitrary small transfers. Use the actual package
 builder for both estimates and sends, including exact one-output spends. Retain
 all admission, expiry, dust, and final-claim checks. This reduces avoidable costs;
 it does not lower the 4,000-sat minimum of the current signed profile.
