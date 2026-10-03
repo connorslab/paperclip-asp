@@ -114,6 +114,31 @@ fn copy_wallet(source: &std::path::Path, destination: &std::path::Path) {
 }
 
 #[tokio::test]
+async fn xbt_lifecycle_small_anchor_legacy_recipient() {
+	let old_exec = std::env::var("PAPERCLIP_OLD_WALLET_BIN")
+		.expect("Set an independently built pre-capability wallet for compatibility testing");
+	let ctx = TestContext::new("xbt/small_anchor_legacy").await;
+	let srv = ctx.captaind("server").no_vtxo_pool().funded(btc(2)).create().await;
+	let alice = ctx.bark("new", &srv).funded(sat(1_000_000)).create().await;
+	let bob = ctx.bark("old", &srv).exec(old_exec).create().await;
+	alice.board_and_confirm_and_register(&ctx, sat(500_000)).await;
+	alice.send_oor(&bob.address().await, sat(100_000)).await;
+	assert_eq!(alice.spendable_balance().await, sat(394_010));
+	assert_eq!(bob.spendable_balance().await, sat(100_000));
+	// The old sender retains its original 6,000-sat budget, while spending
+	// an input with both old and small-anchor recovery transactions.
+	bob.send_oor(&alice.address().await, sat(20_000)).await;
+	assert_eq!(bob.spendable_balance().await, sat(74_000));
+	assert_eq!(alice.spendable_balance().await, sat(414_010));
+	srv.stop().await.unwrap();
+	bob.start_exit_all().await;
+	complete_exit(&ctx, &bob).await;
+	bob.claim_all_exits(bob.get_onchain_address().await).await;
+	ctx.generate_blocks(1).await;
+	assert!(bob.onchain_balance().await > sat(72_000));
+}
+
+#[tokio::test]
 async fn xbt_lifecycle_late_receipt_and_backup() {
 	let ctx = TestContext::new("xbt/late_receipt_backup").await;
 	let srv = ctx.captaind("server").no_vtxo_pool().funded(btc(10)).create().await;
