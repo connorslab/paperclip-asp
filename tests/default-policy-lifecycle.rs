@@ -43,15 +43,15 @@ async fn xbt_lifecycle() {
 	let rejected = ctx.bitcoind().sync_client().test_mempool_accept(&[&legacy]).unwrap();
 	assert!(!rejected[0].allowed);
 	alice.send_oor(&bob.address().await, sat(100_000)).await;
-	assert_eq!(alice.spendable_balance().await, sat(392_000));
+	assert_eq!(alice.spendable_balance().await, sat(394_010));
 	assert_eq!(bob.spendable_balance().await, sat(100_000));
 	assert!(alice.try_send_oor(&carol.address().await, sat(329), true).await.is_err());
-	assert_eq!(alice.spendable_balance().await, sat(392_000));
+	assert_eq!(alice.spendable_balance().await, sat(394_010));
 	// Two users now share ancestors in the same freshly funded round.
 	ctx.refresh_all(&srv, &[&alice, &bob]).await;
 	ctx.generate_blocks(ROUND_CONFIRMATIONS).await;
 	bob.send_oor(&carol.address().await, sat(20_000)).await;
-	assert_eq!(bob.spendable_balance().await, sat(74_000));
+	assert_eq!(bob.spendable_balance().await, sat(76_010));
 	assert_eq!(carol.spendable_balance().await, sat(20_000));
 	// Cooperative withdrawal also remains available.
 	bob.offboard_all(&bob.get_onchain_address().await).await;
@@ -96,7 +96,7 @@ async fn xbt_lifecycle() {
 	alice.claim_all_exits(alice.get_onchain_address().await).await;
 	ctx.generate_blocks(1).await;
 	assert!(alice.onchain_balance().await > before + sat(380_000));
-	assert!(alice.onchain_balance().await < before + sat(392_000));
+	assert!(alice.onchain_balance().await < before + sat(394_010));
 }
 
 fn copy_wallet(source: &std::path::Path, destination: &std::path::Path) {

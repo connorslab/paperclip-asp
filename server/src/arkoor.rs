@@ -60,7 +60,11 @@ impl Server {
 		}
 
 		for request in &cosign_req.requests {
-			ensure!(request.exit_funding == Some(ark::exit_policy::paperclip_funding()),
+			let ordinary = matches!(request.input.policy(), VtxoPolicy::Pubkey(_))
+				&& request.outputs.iter().all(|o| matches!(&o.policy, VtxoPolicy::Pubkey(_)))
+				&& request.isolated_outputs.is_empty();
+			ensure!(request.exit_funding == Some(ark::exit_policy::paperclip_funding())
+				|| (ordinary && request.exit_funding == Some(ark::exit_policy::small_anchor_transfer_funding())),
 				"funded recovery profile required");
 		}
 		// then we create the builder
