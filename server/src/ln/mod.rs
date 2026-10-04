@@ -625,6 +625,7 @@ impl Server {
 			let _ = self.lightning_failure_reimbursements(&[id]).await;
 		}
 		Ok(())
+	}
 
 	#[tracing::instrument(skip(self))]
 	pub async fn start_lightning_receive(
