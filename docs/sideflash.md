@@ -87,3 +87,10 @@ authorized countersigning, persisted wallet address reuse, and successful
 invoice retrieval from a separate CLN peer. No funded settlement or recipient
 Ark claim is implied by these checks. The separate local ASP starts with empty
 pool and recovery wallets; production services and public releases are unchanged.
+
+The funded local test subsequently completed a 10,000-sat Sideflash Lightning
+payment into 5,880 spendable Ark sats (120-sat service fee and 4,000-sat recovery
+allocation). The recipient retained its settled payment and balance after restart.
+The sender's identical payment ID did not produce another payment. Private-channel
+routing required the forwarding peer's SCID alias. Unilateral recovery remains a
+separate test; this evidence does not establish production readiness.
