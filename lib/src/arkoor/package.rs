@@ -658,20 +658,73 @@ mod test {
 	}
 
 	fn funded_test_input(amount: Amount) -> (Transaction, Vtxo<Full>) {
-		let (mut funding, old) = dummy_vtxo_for_amount(amount);
+		funded_test_input_for_server(amount, server_keypair())
+	}
+
+	fn funded_test_input_for_server(amount: Amount, server_key: Keypair) -> (Transaction, Vtxo<Full>) {
+		let (mut funding, old) = DummyTestVtxoSpec {
+			amount: amount + P2TR_DUST, fee: P2TR_DUST,
+			expiry_height: BlockHeight::new(1000), exit_delta: BlockDelta::new(128),
+			user_keypair: alice_keypair(), server_keypair: server_key,
+		}.build();
 		let profile = crate::exit_policy::paperclip_funding();
 		funding.output[old.chain_anchor().vout as usize].value = amount + profile.per_transaction();
 		let point = bitcoin::OutPoint::new(funding.compute_txid(), old.chain_anchor().vout);
 		let builder = crate::board::BoardBuilder::new(alice_public_key(), old.expiry_height(),
-			server_keypair().public_key(), old.exit_delta())
+			server_key.public_key(), old.exit_delta())
 			.with_exit_format(profile.format())
 			.set_funded_funding_details(amount + profile.per_transaction(), profile.anchor(), profile.miner_fee(), point)
 			.unwrap().generate_user_nonces();
 		let server = crate::board::BoardBuilder::new_for_standard_cosign(alice_public_key(), old.expiry_height(),
-			server_keypair().public_key(), old.exit_delta(), amount + profile.per_transaction(),
+			server_key.public_key(), old.exit_delta(), amount + profile.per_transaction(),
 			profile.anchor(), profile.miner_fee(), point, *builder.user_pub_nonce()).unwrap();
-		let vtxo = builder.build_vtxo(&server.server_cosign(&server_keypair()), &alice_keypair()).unwrap();
+		let vtxo = builder.build_vtxo(&server.server_cosign(&server_key), &alice_keypair()).unwrap();
 		(funding, vtxo)
+	}
+
+	/// Real VTXO builders and signatures, but no networked servers or chain node.
+	/// Sharing a hash does not make these local-server contracts a direct swap.
+	#[test]
+	fn inter_asp_vtxo_contracts_validate_but_remain_server_bound() {
+		let other_server = Keypair::from_str(
+			"1111111111111111111111111111111111111111111111111111111111111111").unwrap();
+		let preimage = crate::lightning::Preimage::random();
+		let hash = preimage.compute_payment_hash();
+		let (source_funding, source) = funded_test_input(Amount::from_sat(100_000));
+		let (dest_funding, dest) = funded_test_input_for_server(Amount::from_sat(100_000), other_server);
+		source.validate(&source_funding).unwrap();
+		dest.validate(&dest_funding).unwrap();
+		assert_ne!(source.server_pubkey(), dest.server_pubkey());
+		let source_destination = ArkoorDestination { total_amount: Amount::from_sat(20_000),
+			policy: VtxoPolicy::new_server_htlc_send(alice_public_key(), hash, BlockHeight::new(500)),
+		};
+		let (builder, _) = ArkoorPackageBuilder::new_funded_lightning_send(vec![source.clone()],
+			source_destination.clone(), VtxoPolicy::new_pubkey(alice_public_key())).unwrap();
+		assert!(builder.cosign_both(&[alice_keypair()], &other_server).is_err());
+		let (builder, _) = ArkoorPackageBuilder::new_funded_lightning_send(vec![source],
+			source_destination, VtxoPolicy::new_pubkey(alice_public_key())).unwrap();
+		let outputs = builder.cosign_both(&[alice_keypair()], &server_keypair()).unwrap().build_signed_vtxos();
+		let source_htlc = outputs.iter().find(|v| matches!(v.policy(), VtxoPolicy::ServerHtlcSend(_))).unwrap();
+		source_htlc.validate(&source_funding).unwrap();
+		if let VtxoPolicy::ServerHtlcSend(policy) = source_htlc.policy() {
+			let clause = policy.server_reveals_preimage_clause(source_htlc.server_pubkey(), source_htlc.exit_delta());
+			assert_eq!(clause.pubkey, server_keypair().public_key());
+			assert_ne!(clause.pubkey, other_server.public_key());
+		} else { unreachable!(); }
+		let destination = ArkoorDestination { total_amount: Amount::from_sat(20_000),
+			policy: VtxoPolicy::new_server_htlc_recv(bob_public_key(), hash,
+				BlockHeight::new(400), BlockDelta::new(72)),
+		};
+		let (builder, _) = ArkoorPackageBuilder::new_funded_lightning_receive(vec![dest],
+			destination, VtxoPolicy::new_pubkey(alice_public_key())).unwrap();
+		let outputs = builder.cosign_both(&[alice_keypair()], &other_server).unwrap().build_signed_vtxos();
+		let dest_htlc = outputs.iter().find(|v| matches!(v.policy(), VtxoPolicy::ServerHtlcRecv(_))).unwrap();
+		dest_htlc.validate(&dest_funding).unwrap();
+		let policy = crate::exit_policy::paperclip_policy();
+		policy.check_lightning_receive(dest_htlc, &dest_funding, BlockHeight::new(100), &preimage).unwrap();
+		assert!(policy.check_lightning_receive(dest_htlc, &dest_funding, BlockHeight::new(100),
+			&crate::lightning::Preimage::random()).is_err());
+		assert!(dest_htlc.validate(&source_funding).is_err());
 	}
 
 	#[test]

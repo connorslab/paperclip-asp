@@ -4,6 +4,25 @@ Decision: selected on 2026-10-04 UTC for `feature/inter-asp-openark`.
 Status: executable coordination model and standalone XBT regtest contracts.
 No Ark payment capability is implemented.
 
+See the [plain-language walkthrough](atomic-swap-walkthrough.md) for the payment
+flow, liquidity movement, and failure cases.
+
+## Actual VTXO boundary test
+
+Run `just unit inter_asp_vtxo` in the development shell. This uses real funded
+board and arkoor builders, two distinct server keypairs, and a shared payment
+hash. It validates complete signed VTXOs against their respective funding
+transactions. It rejects an incorrect server signer, incorrect funding ancestry,
+and an incorrect receive preimage. The existing funded tests also pass after the
+test helper is parameterized by server key.
+
+This is a cryptographic library integration test. The funding transactions are
+fixtures, not broadcasts by two running Ark servers. The test explicitly verifies
+that the source HTLC's success claimant remains the local server. Consequently,
+the current policies cannot express the independent provider's source claim.
+Do not route swaps through these APIs until a new policy or proved composition
+supports that role. No runtime policy or wire encoding changed in this milestone.
+
 ## Standalone transaction fixture
 
 ```sh
