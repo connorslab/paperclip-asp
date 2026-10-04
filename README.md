@@ -30,6 +30,13 @@ is deployed on Paperclip's server. Existing wallet protocols remain unchanged.
 See [receive recovery time](LIGHTNING.md#receive-recovery-time) and
 [validation results](VALIDATION.md#receive-pool-recovery-time-fix--2026-10-02).
 
+## Inter-server development
+
+The `feature/inter-asp-openark` branch targets payments between Paperclip Ark
+servers and a separate OpenArk compatibility adapter. See the
+[design and acceptance checklist](docs/inter-server-payments.md). This is planned
+work, not an enabled payment capability or a production compatibility claim.
+
 ## Build
 
 ```sh
