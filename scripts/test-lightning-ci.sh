@@ -22,6 +22,7 @@ echo "d04cd8211e711af989a7a62d0b8b55a8cfe496694392518da0ccb848469b3799  $XBT_BIT
 git clone --quiet https://github.com/BoltzExchange/hold.git "$deps/hold"
 git -C "$deps/hold" checkout --quiet 14c3568d2b9be7af23df69a4dc579dd198428f1d
 git -C "$deps/hold" apply "$root/tests/fixtures/hold-xbt.patch"
+printf '\n[workspace]\n' >> "$deps/hold/Cargo.toml"
 mkdir -p "$deps/hold/vendor"
 cp -r "$root/vendor/lightning-types" "$deps/hold/vendor/"
 (cd "$deps/hold" && cargo build --locked --no-default-features)

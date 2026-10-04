@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: ['fix/lightning-failed-payment-costs']
+    paths-ignore: ['scripts/test-lightning-ci.sh', 'tests/fixtures/**', '.github/workflows/lightning-failure-e2e.yml', 'docs/**']
 permissions:
   contents: read
 jobs:
