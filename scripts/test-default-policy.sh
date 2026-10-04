@@ -55,6 +55,7 @@ assert old in t
 p.write_text(t.replace(old, 'format!("127.0.0.1:{}", public_port)'))
 p=Path('testing/src/bark.rs')
 t=p.read_text(); assert '.strip_prefix("bark ")' in t
+t=t.replace('pay::Progress::RevocationStuck { .. } => "RevocationStuck",', 'pay::Progress::RevocationStuck { .. } => "RevocationStuck",\n\t\t\t\tpay::Progress::AwaitingReimbursement { .. } => "AwaitingReimbursement",')
 p.write_text(t.replace('.strip_prefix("bark ")', '.strip_prefix("paperclip-wallet ")').replace('match cp {', 'match cp { Cp::LightningOffer(_) => "ln_offer.saved".to_string(),'))
 # Funded version-2 exits broadcast their parents without a CPFP child. The
 # upstream helper must mine that state before waiting for the user's CSV delay.

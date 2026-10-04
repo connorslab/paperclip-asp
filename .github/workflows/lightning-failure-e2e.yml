@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: ['fix/lightning-failed-payment-costs']
-    paths: ['.github/workflows/lightning-failure-e2e.yml', 'scripts/test-lightning-ci.sh', 'tests/funded-lightning.rs']
+    paths: ['.github/workflows/lightning-failure-e2e.yml', 'scripts/test-lightning-ci.sh', 'scripts/test-default-policy.sh', 'tests/funded-lightning.rs']
 permissions:
   contents: read
 jobs:
@@ -38,6 +38,7 @@ jobs:
             .state/default-policy.*/lifecycle.log
             .state/default-policy.*/data/**/*.log
           retention-days: 7
+          include-hidden-files: true
       - uses: actions/cache/save@v4
         if: always() && !cancelled()
         with:
