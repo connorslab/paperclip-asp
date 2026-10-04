@@ -622,6 +622,8 @@ impl Server {
 	pub(crate) async fn retry_legacy_lightning_credits(&self) -> anyhow::Result<()> {
 		let ids = self.db.read(async |t| t.pending_legacy_lightning_credits().await).await?;
 		for id in ids {
+			// A large or temporarily unpayable credit must not starve later users.
+			self.db.write(async |t| t.mark_lightning_credit_retry(id).await).await?;
 			let _ = self.lightning_failure_reimbursements(&[id]).await;
 		}
 		Ok(())

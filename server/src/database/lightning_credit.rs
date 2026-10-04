@@ -163,8 +163,14 @@ impl Tx<'_> {
 		self.query("SELECT htlc_vtxo_id FROM lightning_failure_credit
 			WHERE NOT inline_reimbursement AND legacy_mailbox IS NOT NULL AND approved
 			AND refund_vtxo_id IS NOT NULL AND reimbursement_vtxos IS NULL
-			ORDER BY created_at LIMIT 32", &[]).await?.iter()
+			ORDER BY last_retry_at NULLS FIRST, created_at LIMIT 32", &[]).await?.iter()
 			.map(|r| r.get::<_, String>(0).parse().map_err(Into::into)).collect()
+	}
+
+	pub async fn mark_lightning_credit_retry(&self, id: VtxoId) -> anyhow::Result<()> {
+		self.execute("UPDATE lightning_failure_credit SET last_retry_at=clock_timestamp()
+			WHERE htlc_vtxo_id=$1", &[&id.to_string()]).await?;
+		Ok(())
 	}
 
 	pub async fn record_lightning_setup_cost(

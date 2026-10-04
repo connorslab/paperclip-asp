@@ -2919,6 +2919,7 @@ CREATE TABLE lightning_failure_credit (
 	reimbursement_vtxos BYTEA[],
 	inline_reimbursement BOOLEAN NOT NULL DEFAULT TRUE,
 	legacy_mailbox TEXT,
+	last_retry_at TIMESTAMPTZ,
 	created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 	paid_at TIMESTAMPTZ,
 	CHECK ((refund_vtxo_id IS NULL) = (claim_reserve_sat IS NULL)),
