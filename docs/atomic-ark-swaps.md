@@ -1,7 +1,32 @@
 # Direct atomic Ark swaps
 
 Decision: selected on 2026-10-04 UTC for `feature/inter-asp-openark`.
-Status: transaction design, not an implemented payment capability.
+Status: executable coordination model and transaction design. No real payment
+capability is implemented.
+
+## Run the laboratory model
+
+```sh
+python3 -m unittest discover -s tests -p test_atomic_swap_model.py -v
+```
+
+`scripts/experimental_atomic_swap.py` uses two independent SQLite ledgers with
+temporary simulated balances. It implements inventory reservations, hashlocked
+claims, refunds, immutable operation identifiers, and restart reconciliation.
+The provider monitor reconciles claims before it attempts refunds. Destination
+refunds precede source refunds. No networking, wallet access, or real sats exist
+in this model. Do not connect it to production.
+
+Ten tests cover settlement, replay, crash after destination claim, independent
+refunds, exhausted inventory, partial preparation, incorrect secrets, quote
+substitution, fee floors, timing, and provider monitoring. One adversarial test
+intentionally demonstrates loss when the provider misses its source window and
+the destination success path remains available. This is an expected negative
+result, not proof of unconditional atomicity.
+
+The model assumes each SQLite transition is final. Real chain confirmations,
+reorgs, VTXO ancestry, signatures, default relay policy, and emergency-exit delays
+are not modeled. Transaction-level validation remains the next prerequisite.
 
 ## Outcome and participants
 
