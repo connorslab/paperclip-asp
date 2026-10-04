@@ -165,6 +165,9 @@ impl Binding {
 }
 
 impl SideflashAddress {
+	/// Read the signed binding after decoding. Verification is still required.
+	pub fn binding(&self) -> &Binding { &self.binding }
+
 	/// Return the wire version. Decoded legacy addresses retain version 0.
 	pub fn version(&self) -> u8 { if self.encoding == Encoding::Legacy { 0 } else { 1 } }
 

@@ -62,7 +62,28 @@ Ark backing, remove recovery costs, or guarantee zero fees.
 - Review authentication, payment request restrictions, amount arithmetic and
   resource limits before public activation.
 
-No server deployment, wallet release or monetary test is part of this branch.
-Server registration, delivery coordination and wallet integration remain to be
-implemented. The library supports verified offer extraction for Lightning-only
+No production server deployment or public wallet release is part of this branch.
+The local test additions below add limited receive acknowledgement. Cross-server
+wallet delivery coordination remains to be implemented. The library supports verified offer extraction for Lightning-only
 clients as well as native Ark route selection.
+
+## Local receive acknowledgement experiment
+
+The local `test/sideflash-umbrel-local` branch adds `AcknowledgeSideflash`.
+An empty `sideflash_recipient_allowlist` disables it. An enabled test server also
+requires BOLT12 receiving, an active authenticated offer session, an offer issuer
+that matches the native recipient key, valid recipient authorization, the local
+server identity, the correct chain, revision 1 and at most 24 hours of validity.
+The request is bounded before decoding. The server countersigns the exact binding.
+
+This endpoint does not move funds, reserve inventory, revoke addresses or make
+Lightning settlement proof of Ark delivery. It acknowledges an online wallet's
+existing offer. The wallet's normal BOLT12 receive state machine handles each
+invoice, preimage and conditional claim. Test the complete claim and recovery
+before expanding this limited experiment. No production deployment is included.
+
+Local verification on 2026-10-04 exercised the empty-allowlist rejection,
+authorized countersigning, persisted wallet address reuse, and successful
+invoice retrieval from a separate CLN peer. No funded settlement or recipient
+Ark claim is implied by these checks. The separate local ASP starts with empty
+pool and recovery wallets; production services and public releases are unchanged.

@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use bitcoin::Amount;
+use bitcoin::secp256k1::PublicKey;
 use config::{Environment, File, Value};
 use serde::{Deserialize, Serialize};
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Identity};
@@ -317,6 +318,9 @@ pub struct Config {
 	/// Enable wallet-owned reusable BOLT12 receive sessions.
 	#[serde(default)]
 	pub experimental_bolt12_receive: bool,
+	/// Test-only Sideflash acknowledgement. Empty means disabled.
+	#[serde(default)]
+	pub sideflash_recipient_allowlist: Vec<PublicKey>,
 	#[serde(with = "utils::serde::duration")]
 	pub cln_reconnect_interval: Duration,
 	#[serde(with = "utils::serde::duration")]

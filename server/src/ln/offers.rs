@@ -54,6 +54,10 @@ impl Drop for Session {
 fn offer_id(offer: &Offer) -> [u8; 32] { sha256::Hash::hash(&offer.encode()).to_byte_array() }
 
 impl OfferRelay {
+	pub fn has_active_offer(&self, offer: &Offer) -> bool {
+		self.routes.lock().get(&offer_id(offer)).is_some_and(|(_, tx)| !tx.is_closed())
+	}
+
 	pub fn serve(self: &Arc<Self>, mut input: tonic::Streaming<protos::LightningOfferClient>, db: database::Db) -> OfferStream {
 		let relay = self.clone();
 		Box::pin(async_stream::try_stream! {

@@ -419,6 +419,45 @@ impl rpc::server::ArkService for Server {
 		}))
 	}
 
+	async fn acknowledge_sideflash(&self, req: tonic::Request<protos::SideflashBindingRequest>) -> Result<tonic::Response<protos::SideflashBindingResponse>, tonic::Status> {
+		if !self.config.experimental_bolt12_receive || self.config.sideflash_recipient_allowlist.is_empty() {
+			return Err(tonic::Status::unimplemented("Sideflash test registration is disabled"));
+		}
+		let req = req.into_inner();
+		if req.native_address.len() > 1024 || req.offer.len() > ark::sideflash::MAX_PAYLOAD || req.recipient_signature.len() != 64 {
+			return Err(tonic::Status::invalid_argument("invalid binding size"));
+		}
+		let now = UNIX_EPOCH.elapsed().map_err(|_| tonic::Status::internal("clock unavailable"))?.as_secs();
+		if req.revision != 1 || req.not_before > now || now.saturating_sub(req.not_before) > 300
+			|| req.expires <= now || req.expires.saturating_sub(req.not_before) > 86400 {
+			return Err(tonic::Status::invalid_argument("test binding requires revision 1 and at most 24 hours validity"));
+		}
+		let address = ark::Address::from_str(&req.native_address).map_err(|_| tonic::Status::invalid_argument("invalid native address"))?;
+		let recipient = match address.policy() {
+			ark::VtxoPolicy::Pubkey(policy) => policy.user_pubkey,
+			_ => return Err(tonic::Status::invalid_argument("unsupported recipient policy")),
+		};
+		if !self.config.sideflash_recipient_allowlist.contains(&recipient) {
+			return Err(tonic::Status::permission_denied("recipient is not enabled for this test"));
+		}
+		let offer = Offer::try_from(req.offer.clone()).map_err(|_| tonic::Status::invalid_argument("invalid offer"))?;
+		if offer.issuer_signing_pubkey() != Some(recipient) || !self.lightning_manager.offer_relay.has_active_offer(&offer) {
+			return Err(tonic::Status::failed_precondition("wallet-owned offer must be online at this server"));
+		}
+		let binding = ark::sideflash::Binding {
+			chain: ark::sideflash::ChainContext::xbt(self.config.network).map_err(|_| tonic::Status::invalid_argument("unsupported chain"))?,
+			server: self.server_pubkey, address, offer: req.offer, revision: req.revision,
+			not_before: req.not_before, expires: req.expires,
+		};
+		let signature = bitcoin::secp256k1::schnorr::Signature::from_slice(&req.recipient_signature)
+			.map_err(|_| tonic::Status::invalid_argument("invalid signature"))?;
+		let result = ark::sideflash::SideflashAddress::acknowledge(binding, signature, self.server_key.leak_ref(), now)
+			.map_err(|_| tonic::Status::invalid_argument("binding verification failed"))?;
+		Ok(tonic::Response::new(protos::SideflashBindingResponse {
+			address: result.encode().map_err(|_| tonic::Status::invalid_argument("binding exceeds address size limit"))?,
+		}))
+	}
+
 	async fn get_lightning_offer_info(&self, _req: tonic::Request<protos::Empty>) -> Result<tonic::Response<protos::LightningOfferInfo>, tonic::Status> {
 		if !self.config.experimental_bolt12_receive { return Err(tonic::Status::unimplemented("BOLT12 receiving is not enabled")); }
 		let node = self.lightning_manager.hold_active_node().ok_or_else(|| tonic::Status::unavailable("Lightning relay offline"))?;
