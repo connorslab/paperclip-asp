@@ -42,7 +42,8 @@ set -euo pipefail
 export LD_LIBRARY_PATH="$PAPERCLIP_TEST_NIX_LIBS"
 exec "$CARGO_TARGET_DIR/debug/hold" "$@"
 SH
-ln -s "$deps/cln/usr/libexec/c-lightning/plugins/cln-grpc" "$deps/plugins/cln-grpc"
+# The release auto-loads cln-grpc. Registering a symlink again is an error.
+test -x "$deps/cln/usr/libexec/c-lightning/plugins/cln-grpc"
 chmod 700 "$deps/lightningd" "$deps/plugins/hold"
 export PAPERCLIP_CLN_EXEC="$deps/lightningd"
 export PAPERCLIP_CLN_PLUGIN_DIR="$deps/plugins"
