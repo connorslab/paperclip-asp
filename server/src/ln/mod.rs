@@ -203,12 +203,6 @@ impl Server {
 		// Verify that the proposed expiry makes sense for us
 		let tip = self.sync_manager.chain_tip().height;
 		let expiry = tip + self.config.htlc_send_expiry_delta;
-		if requested_policy.htlc_expiry < expiry.saturating_sub(BlockDelta::new(1)) {
-			return badarg!(
-				"requested expiry is too low. our tip is {tip}. \
-				sync your node and try again",
-			);
-		}
 
 		if self.db.read(async |t| t.get_open_lightning_payment_attempt_by_payment_hash(
 			payment_hash,
@@ -240,6 +234,9 @@ impl Server {
 			vtxo.check_spendable_for_oor(chain_tip, *spending_txid)?;
 		}
 		if !replay {
+			if requested_policy.htlc_expiry < expiry.saturating_sub(BlockDelta::new(1)) {
+				return badarg!("requested expiry is too low; sync your node and try again");
+			}
 			let invoice = invoice.context("Update your wallet: invoice preflight is required before HTLC signing")
 				.badarg("Lightning preflight required")?;
 			let amount = payment_amount.badarg("payment amount is required for Lightning preflight")?;
@@ -251,7 +248,7 @@ impl Server {
 			}
 			invoice.get_payment_amount(Some(amount)).badarg("invalid invoice amount")?;
 			let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
-			if invoice.expired_at(now + Duration::from_secs(30)) {
+			if !invoice.has_send_lifetime(now) {
 				return badarg!("invoice expired or expires within 30 seconds; request a fresh invoice");
 			}
 			let fee = self.config.fees.lightning_send.calculate(amount, input_vtxos.iter()

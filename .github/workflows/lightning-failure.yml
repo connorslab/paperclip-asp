@@ -30,3 +30,4 @@ jobs:
       - run: nix develop --command just unit-server lightning_credit
       - run: nix develop --command just unit-server rejection_tests
       - run: nix develop --command just unit funded_lightning
+      - run: nix develop --command just unit lightning_send_lifetime
