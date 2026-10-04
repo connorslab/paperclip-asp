@@ -158,6 +158,10 @@ impl Server {
 		invoice: Option<Invoice>,
 		payment_amount: Option<Amount>,
 	) -> anyhow::Result<ArkoorPackageCosignResponse> {
+		if invoice.is_some() != payment_amount.is_some() {
+			return badarg!("provide both invoice and amount for Lightning preflight, or neither for legacy requests");
+		}
+		let inline_reimbursement = invoice.is_some();
 		let input_vtxo_ids = request.inputs().cloned().collect::<Vec<VtxoId>>();
 		let input_vtxos = self.db.read(async |t| t.get_user_vtxos_by_id(&input_vtxo_ids).await).await?;
 
@@ -232,41 +236,41 @@ impl Server {
 			if requested_policy.htlc_expiry < expiry.saturating_sub(BlockDelta::new(1)) {
 				return badarg!("requested expiry is too low; sync your node and try again");
 			}
-			let invoice = invoice.context("Update your wallet: invoice preflight is required before HTLC signing")
-				.badarg("Lightning preflight required")?;
-			let amount = payment_amount.badarg("payment amount is required for Lightning preflight")?;
-			invoice.require_xbt().badarg("wrong invoice network identity")?;
-			if invoice.network() != self.config.network { return badarg!("invoice is for another network"); }
-			invoice.check_signature().badarg("invalid invoice signature")?;
-			if invoice.payment_hash() != payment_hash || amount == Amount::ZERO {
-				return badarg!("invoice does not match the requested HTLC");
-			}
-			invoice.get_payment_amount(Some(amount)).badarg("invalid invoice amount")?;
-			let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
-			if !invoice.has_send_lifetime(now) {
-				return badarg!("invoice expired or expires within 30 seconds; request a fresh invoice");
-			}
-			let fee = self.config.fees.lightning_send.calculate(amount, input_vtxos.iter()
-				.map(|v| VtxoFeeInfo::from_vtxo_and_tip(&v.vtxo, chain_tip)))
-				.context("fee overflow")?;
-			let extra = htlc_amount.checked_sub(amount.checked_add(fee).context("amount overflow")?)
-				.badarg("HTLC does not cover payment and fee")?;
-			let routing_fee = fee.to_sat().checked_mul(self.config.ln_max_fee_ppm as u64)
-				.map(|n| Amount::from_sat(n / 1_000_000)).and_then(|n| n.checked_add(extra))
-				.context("routing fee overflow")?;
-			if let Some(sub) = self.db.read(async |t|
-				t.get_htlc_subscription_by_payment_hash(payment_hash).await
-			).await? {
-				validate_intra_ark_payment(&sub, &invoice, amount).badarg("invalid internal payment")?;
-			} else {
-				self.lightning_manager.preflight_payment(&invoice, amount, routing_fee,
-					requested_policy.htlc_expiry).await.badarg("Lightning route preflight failed; no HTLC signed")?;
+			if let Some(invoice) = invoice {
+				let amount = payment_amount.badarg("payment amount is required for Lightning preflight")?;
+				invoice.require_xbt().badarg("wrong invoice network identity")?;
+				if invoice.network() != self.config.network { return badarg!("invoice is for another network"); }
+				invoice.check_signature().badarg("invalid invoice signature")?;
+				if invoice.payment_hash() != payment_hash || amount == Amount::ZERO {
+					return badarg!("invoice does not match the requested HTLC");
+				}
+				invoice.get_payment_amount(Some(amount)).badarg("invalid invoice amount")?;
+				let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+				if !invoice.has_send_lifetime(now) {
+					return badarg!("invoice expired or expires within 30 seconds; request a fresh invoice");
+				}
+				let fee = self.config.fees.lightning_send.calculate(amount, input_vtxos.iter()
+					.map(|v| VtxoFeeInfo::from_vtxo_and_tip(&v.vtxo, chain_tip)))
+					.context("fee overflow")?;
+				let extra = htlc_amount.checked_sub(amount.checked_add(fee).context("amount overflow")?)
+					.badarg("HTLC does not cover payment and fee")?;
+				let routing_fee = fee.to_sat().checked_mul(self.config.ln_max_fee_ppm as u64)
+					.map(|n| Amount::from_sat(n / 1_000_000)).and_then(|n| n.checked_add(extra))
+					.context("routing fee overflow")?;
+				if let Some(sub) = self.db.read(async |t|
+					t.get_htlc_subscription_by_payment_hash(payment_hash).await
+				).await? {
+					validate_intra_ark_payment(&sub, &invoice, amount).badarg("invalid internal payment")?;
+				} else {
+					self.lightning_manager.preflight_payment(&invoice, amount, routing_fee,
+						requested_policy.htlc_expiry).await.badarg("Lightning route preflight failed; no HTLC signed")?;
+				}
 			}
 		}
 
 		slog!(LightningPayHtlcsRequested, payment_hash, expiry);
 
-		let (builder, _) = self.cosign_oor_with_builder(builder).await?;
+		let (builder, _) = self.cosign_oor_with_delivery(builder, inline_reimbursement).await?;
 		Ok(builder.cosign_response())
 	}
 
@@ -329,6 +333,12 @@ impl Server {
 			}
 			min_expiry_height = cmp::min(min_expiry_height, htlc.htlc_expiry);
 			htlc_vtxo_sum += htlc_vtxo.amount();
+		}
+
+		// Legacy wallets provide their existing inbox at initiation, after HTLC
+		// signing. Delivery remains bound to the authorized revocation key.
+		if let Some(mailbox) = mailbox_id {
+			self.db.write(async |t| t.record_lightning_credit_mailbox(&htlc_vtxo_ids, mailbox).await).await?;
 		}
 
 		// Verify against the invoice amount if applicable, disallowing underpayments.
@@ -591,7 +601,10 @@ impl Server {
 			let result = async {
 				let credit = self.db.read(async |t| t.lightning_failure_credit(*id).await).await?;
 				match credit {
-					Some(credit) => self.vtxopool.reimburse(self, &credit).await,
+					Some(credit) => {
+						let outputs = self.vtxopool.reimburse(self, &credit).await?;
+						if credit.inline_reimbursement { Ok(outputs) } else { Ok(Vec::new()) }
+					},
 					None => Ok(Vec::new()),
 				}
 			}.await;
@@ -605,6 +618,13 @@ impl Server {
 		}
 		(reimbursement, pending)
 	}
+
+	pub(crate) async fn retry_legacy_lightning_credits(&self) -> anyhow::Result<()> {
+		let ids = self.db.read(async |t| t.pending_legacy_lightning_credits().await).await?;
+		for id in ids {
+			let _ = self.lightning_failure_reimbursements(&[id]).await;
+		}
+		Ok(())
 
 	#[tracing::instrument(skip(self))]
 	pub async fn start_lightning_receive(

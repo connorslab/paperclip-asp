@@ -56,6 +56,19 @@ export PAPERCLIP_WALLET_SOURCE="$deps/wallet"
 export PAPERCLIP_WALLET_BIN="$CARGO_TARGET_DIR/debug/paperclip-wallet"
 export PAPERCLIP_ASP_BIN="$CARGO_TARGET_DIR/debug/paperclip-asp"
 export PAPERCLIP_WATCHMAN_BIN="$CARGO_TARGET_DIR/debug/paperclip-watchman"
+# Exercise the actual previous release, not a new wallet with fields stripped.
+export PAPERCLIP_LEGACY_IMAGE='ghcr.io/connorslab/paperclip-wallet-app:beta-bundled-37162659589@sha256:e8326633fa6fc933273ab0ddf1a18706d176382109a1be50248ce8b410b6a3e8'
+export PAPERCLIP_TEST_ROOT="$root"
+env -u LD_LIBRARY_PATH /usr/bin/docker pull "$PAPERCLIP_LEGACY_IMAGE"
+cat > "$deps/legacy-wallet" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+exec env -u LD_LIBRARY_PATH /usr/bin/docker run --rm --network host \
+  --user "$(id -u):$(id -g)" --entrypoint /usr/local/bin/paperclip-wallet \
+  -v "$PAPERCLIP_TEST_ROOT:$PAPERCLIP_TEST_ROOT" -w "$PWD" "$PAPERCLIP_LEGACY_IMAGE" "$@"
+SH
+chmod 700 "$deps/legacy-wallet"
+export PAPERCLIP_LEGACY_WALLET_BIN="$deps/legacy-wallet"
 export POSTGRES_BINS
 POSTGRES_BINS=$(dirname "$(command -v postgres)")
 bash "$root/scripts/test-lightning.sh"

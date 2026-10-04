@@ -84,6 +84,44 @@ async fn xbt_funded_lightning_expiry_refund_lost_response() {
 }
 
 #[tokio::test]
+async fn xbt_funded_lightning_legacy_wallet_mailbox_refund() {
+	let ctx = TestContext::new("xbt/ln-legacy-credit").await;
+	let ln = ctx.new_lightning_setup("ln").await;
+	let srv = ctx.captaind("asp").lightningd(&ln.internal).funded(btc(2))
+		.cfg(|c| {
+			c.experimental_funded_lightning = true;
+			c.vtxopool.vtxo_targets = vec![VtxoTarget { amount: sat(200_000), count: 4 }];
+		}).create().await;
+	srv.wait_for_vtxopool(&ctx).await;
+	let wallet = ctx.bark("legacy", &srv)
+		.exec(std::env::var("PAPERCLIP_LEGACY_WALLET_BIN").expect("pin the released legacy wallet"))
+		.funded(sat(500_000)).create().await;
+	wallet.board_and_confirm_and_register(&ctx, sat(300_000)).await;
+	ln.sync().await;
+	let before = wallet.spendable_balance().await;
+	let paid = ln.external.invoice(Some(sat(20_000)), "legacy-success", "legacy settlement").await;
+	wallet.pay_lightning_wait(paid, None).await;
+	assert_eq!(wallet.spendable_balance().await, before - sat(26_000));
+	let before = wallet.spendable_balance().await;
+	let unreachable = ctx.lightningd("unreachable").create().await;
+	let invoice = unreachable.invoice(Some(sat(20_000)), "legacy-failure", "legacy reimbursement").await;
+	let _ = wallet.try_pay_lightning(invoice, None, true).await;
+	tokio::time::timeout(Duration::from_secs(120), async {
+		loop {
+			wallet.sync().await;
+			if wallet.spendable_balance().await == before { break; }
+			tokio::time::sleep(Duration::from_secs(1)).await;
+		}
+	}).await.expect("released wallet did not receive its mailbox reimbursement");
+	assert_eq!(wallet.offchain_balance().await.pending_lightning_send, sat(0));
+	srv.stop().await.unwrap();
+	srv.start().await.unwrap();
+	wallet.set_ark_url(&srv).await;
+	wallet.sync().await;
+	assert_eq!(wallet.spendable_balance().await, before, "restart must not duplicate the credit");
+}
+
+#[tokio::test]
 async fn xbt_funded_lightning_settlement() {
 	let ctx = TestContext::new("xbt/funded-lightning").await;
 	let info: serde_json::Value = ctx.bitcoind().sync_client().call("getmempoolinfo", &[]).unwrap();

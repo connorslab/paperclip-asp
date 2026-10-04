@@ -398,18 +398,21 @@ impl VtxoPool {
 			})
 			.collect::<Vec<_>>();
 
-		srv.db.write(async |t| {
-			if let Some(credit) = credit {
+		let delivery = srv.db.write(async |t| {
+			t.execute_vtxo_tree_update(update).await?;
+			let delivery = if let Some(credit) = credit {
 				// Persist the exact signed result in the SAME transaction as the
 				// pool spend. A retry after a lost response returns these bytes.
-				t.complete_lightning_failure_credit(credit, &sent).await?;
-			}
-			t.execute_vtxo_tree_update(update).await?;
+				t.complete_lightning_failure_credit(credit, &sent).await?
+			} else { None };
 			htlc_vtxo::create_htlc_vtxos(&t, &htlc_recvs, HtlcDirection::Outgoing).await?;
 			t.mark_vtxopool_vtxos_spent(inputs.iter().map(|v| v.0)).await
 				.context("failed to mark vtxopool vtxos as spent")?;
-			Ok(())
+			Ok(delivery)
 		}).await?;
+		if let (Some(cp), Some(mailbox)) = (delivery, credit.and_then(|c| c.legacy_mailbox)) {
+			srv.mailbox_manager.notify(mailbox, cp);
+		}
 
 		for input in inputs {
 			slog!(SpentPoolVtxo, vtxo: input.0, amount: input.2, destination: dest.clone());
@@ -461,6 +464,8 @@ impl VtxoPool {
 		&self, srv: &Server, credit: &FailureCredit,
 	) -> anyhow::Result<Vec<Vtxo<Full>>> {
 		if let Some(paid) = &credit.paid { return Ok(paid.clone()); }
+		ensure!(credit.inline_reimbursement || credit.legacy_mailbox.is_some(),
+			"legacy reimbursement awaits a delivery mailbox");
 		let refund = srv.db.read(async |t| t.get_user_vtxos_by_id(&[credit.refund_id]).await).await?;
 		let policy = refund.first().context("missing refund VTXO")?.vtxo.policy().clone();
 		ensure!(matches!(&policy, VtxoPolicy::Pubkey(_)), "refund recipient is not a pubkey");
@@ -799,9 +804,13 @@ impl Process {
 				if let Err(e) = self.check_maybe_issue_vtxos().await {
 					error!("Error from VTXO pool: {:#}", e);
 				}
+				if let Err(e) = self.srv.retry_legacy_lightning_credits().await {
+					warn!("Legacy Lightning reimbursement retry: {e:#}");
+				}
 			}
 
 			tokio::select! {
+				_ = tokio::time::sleep(Duration::from_secs(30)) => {},
 				res = self.sync_height_rx.changed() => {
 					if res.is_err() {
 						info!("Sync height watcher closed. Exiting VtxoPool...");
