@@ -1,7 +1,8 @@
 # Inter-server payments
 
-Status: design target. No discovery endpoint, payment adapter, or new settlement
-behavior is implemented by this document. Production behavior remains unchanged.
+Status: prototype. `ark::interop` implements recipient-signed address-to-offer
+authorization. No discovery endpoint, payment adapter, or new settlement behavior
+is enabled. Production behavior remains unchanged.
 
 Development branch: `feature/inter-asp-openark`.
 
@@ -11,13 +12,48 @@ Development branch: `feature/inter-asp-openark`.
 2. Support an OpenArk peer through a separate adapter when the peer implements
    compatible XBT Lightning settlement and authenticated recipient resolution.
 
-The first target uses the existing Lightning send and receive paths. It does not
+The initial settlement fallback uses the existing Lightning send and receive paths. It does not
 accept another server's VTXOs as local VTXOs. The second target does not require
 Paperclip to replace its transaction format or its recovery model.
 
 Same-server payments retain the existing arkoor path. Old wallet versions retain
 their existing APIs. Foreign addresses remain rejected until a complete adapter
 is enabled and verified. There is no silent on-chain fallback.
+
+## Low-cost receive target
+
+Distinguish address interoperability from a transfer of backing between servers.
+The preferred low-cost experiment is a multi-server recipient wallet. It resolves
+the recipient's public identity to a recipient-authorized address on the source
+server. The sender then makes an ordinary local arkoor payment. The recipient
+retains a claim on the source server, with that server's availability, expiry,
+recovery costs, and security assumptions. This does not move backing to the
+recipient's home server.
+
+The recipient must explicitly allow each full source-server identity and its
+recovery profile. A home-server signature alone cannot authorize a substituted
+recipient key. Source-specific addresses must bind to the recipient's own keys.
+The wallet must retain separate server balances, backups, refresh schedules, and
+exit data. It must show the backing server even if it presents a combined total.
+Do not silently accept arbitrary servers through a global directory.
+
+This approach targets the cost of one ordinary arkoor transfer under the source
+server's policy. It adds no per-payment Lightning route or server liquidity swap.
+It does not remove the existing recovery allocation or later refresh costs.
+Recipients need source-server monitoring and backup support before acceptance.
+
+If the recipient requires backing on its home server, use a separately quoted
+conversion. Research a direct atomic Ark swap with prefunded inventory at both
+servers. Require verified hashlock or adaptor-signature construction, safe timeout
+margins, and recovery on both sides before implementation. Existing small-anchor
+pubkey transfer budgets must not be reused blindly for conditional swap outputs.
+Such swaps can avoid Lightning routing fees but cannot promise local-transfer
+costs. Price inventory, refresh, rebalancing, and recovery costs explicitly.
+Batch rebalancing can amortize costs; unsecured operator IOUs are not settlement.
+
+For OpenArk, source-backed receipt requires the wallet to validate that peer's
+VTXO and exit formats. The initial Lightning adapter alone cannot provide this
+low-cost mode. Keep these capabilities separate in discovery and user messages.
 
 ## Discovery and identity
 
@@ -108,6 +144,9 @@ custody properties. Nostr transport does not enforce payment settlement.
 
 ## Implementation sequence and acceptance
 
+- [ ] Define recipient-authorized source-server addresses for low-cost receipt.
+- [ ] Add wallet multi-server balance, backup, refresh, and exit management.
+- [ ] Test ordinary transfers to a recipient whose home server is different.
 - [ ] Define discovery and quote schemas, canonical signatures, and test vectors.
 - [ ] Add disabled-by-default configured-peer discovery and capability negotiation.
 - [ ] Add authenticated recipient registration and exact-net receive quotes.
@@ -128,3 +167,12 @@ data loss. Test that an old wallet continues to send and receive on its server.
 Use isolated XBT regtest first. Do not enable this branch on production or move
 mainnet sats as part of the initial prototype. A later release needs paired-peer
 evidence and a documented rollback path for persisted payment operations.
+
+## Prototype validation
+
+On 2026-10-04 UTC, the isolated FLYNN development shell ran `just unit interop`
+and `just checks`. Four authorization tests passed and the workspace check passed.
+The tests cover an accepted binding, wrong peer, wrong network, expiry, offer
+substitution, altered expiry, wrong recipient signer, and an oversized offer.
+These checks do not validate settlement, a public API, or an OpenArk peer.
+No production service or wallet was changed and no mainnet payment was made.

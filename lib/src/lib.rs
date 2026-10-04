@@ -26,6 +26,7 @@ pub mod message;
 pub mod tree;
 pub mod vtxo;
 pub mod integration;
+pub mod interop;
 
 pub use crate::address::Address;
 pub use crate::encode::{ProtocolEncoding, WriteExt, ReadExt, ProtocolDecodingError};
