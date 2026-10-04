@@ -24,3 +24,8 @@ int-pruned-lifecycle:
 
 int-bolt12:
 	bash scripts/test-bolt12.sh
+
+# A standalone leaf contract on a fresh XBT regtest chain; no ASP integration.
+int-swap-contract:
+	cargo build --locked -p ark-lib --example atomic_swap_contract
+	SWAP_CONTRACT_BIN="${CARGO_TARGET_DIR:-target}/debug/examples/atomic_swap_contract" python3 scripts/test-atomic-swap-contract.py

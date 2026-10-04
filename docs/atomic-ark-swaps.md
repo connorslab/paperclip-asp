@@ -1,8 +1,37 @@
 # Direct atomic Ark swaps
 
 Decision: selected on 2026-10-04 UTC for `feature/inter-asp-openark`.
-Status: executable coordination model and transaction design. No real payment
-capability is implemented.
+Status: executable coordination model and standalone XBT regtest contracts.
+No Ark payment capability is implemented.
+
+## Standalone transaction fixture
+
+```sh
+XBT_BITCOIND=/absolute/path/to/verified/xbt/bitcoind just int-swap-contract
+```
+
+Run inside `nix develop`. The runner checks the same Knots binary hash as the
+existing XBT integration harness. It starts its own temporary regtest node with
+no peer connections, standard transaction enforcement, and TRUC rejection.
+It cannot attach to a live node. The fixture uses PUBLIC deterministic keys;
+never send real value to its addresses.
+
+`lib/examples/atomic_swap_contract.rs` constructs a Taproot output with separate
+hashlock-success and absolute-height-refund leaves. A NUMS internal key removes
+the known key-spend bypass. Success requires a 32-byte secret and the claimant's
+signature. Refund requires the refund key and a mature CLTV lock. Both paths use
+XBT unified signatures. The source and destination fixtures use distinct Alice,
+provider, and Bob keys and share a payment hash.
+
+The runner checks invalid secrets and signatures, an early refund, confirmed
+success and refund spends, double-spend rejection, a late success spend, and two
+linked success spends. The fixed 1,000-sat transaction fee is test provisioning,
+not an optimized recovery allocation or a proposed customer fee.
+
+These are directly funded on-chain UTXOs. The test does not include Ark ancestry,
+checkpoint revocation, server failure, CSV recovery delays, or concurrent chain
+races. The secret is deterministic and public in this fixture. This demonstrates
+script enforcement and paired claims, not a secure end-to-end Ark swap.
 
 ## Run the laboratory model
 
