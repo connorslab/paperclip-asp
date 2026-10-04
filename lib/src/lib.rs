@@ -27,6 +27,7 @@ pub mod tree;
 pub mod vtxo;
 pub mod integration;
 pub mod interop;
+pub mod hybrid_address;
 pub mod experimental_swap;
 
 pub use crate::address::Address;
