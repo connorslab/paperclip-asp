@@ -126,8 +126,7 @@ impl ClnXpayClient {
 						}).await.map(|r| r.into_inner().payments.is_empty()).unwrap_or(false)
 					} else { false };
 					let saved = self.db.write(async |t| {
-						t.execute("UPDATE lightning_payment_attempt SET error=$2 WHERE id=$1",
-							&[&id, &reason]).await?;
+						t.record_lightning_payment_error(id, &reason).await?;
 						if no_dispatch {
 							t.ensure_not_settled(payment_hash).await?;
 							t.approve_local_lightning_failure(id).await?;

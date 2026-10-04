@@ -313,6 +313,13 @@ impl<'t> Tx<'t> {
 		Ok(())
 	}
 
+	/// Preserve an immediate RPC rejection without changing payment status.
+	pub async fn record_lightning_payment_error(&self, id: i64, reason: &str) -> anyhow::Result<()> {
+		self.execute("UPDATE lightning_payment_attempt SET error=$2, updated_at=clock_timestamp()
+			WHERE id=$1", &[&id, &reason]).await?;
+		Ok(())
+	}
+
 	/// Returns `None` when the optimistic-lock predicate missed.
 	pub async fn update_lightning_payment_attempt_status(
 		&self,

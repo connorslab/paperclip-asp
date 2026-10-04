@@ -145,6 +145,7 @@ async fn xbt_funded_lightning_outgoing_unilateral_refund() {
 		.cfg(|c| { c.experimental_funded_lightning = true; }).create().await;
 	let wallet = ctx.bark("wallet", &srv).funded(sat(200_000)).create().await;
 	wallet.board_and_confirm_and_register(&ctx, sat(100_000)).await;
+	ln.sync().await;
 	let preimage = ark::lightning::Preimage::random();
 	let hash = preimage.compute_payment_hash();
 	let invoice = ln.external.hold_client().await.invoice(cln_rpc::plugins::hold::InvoiceRequest {

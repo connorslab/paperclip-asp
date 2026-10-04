@@ -45,6 +45,27 @@ mod tests {
 		let grant = build(10_000);
 		let preimage = Preimage::random();
 		let hash = preimage.compute_payment_hash();
+		// The audit trigger requires a fresh timestamp even for an error-only
+		// update. Preserve that error through the later status transition.
+		db.write(async |t| {
+			let (node, _) = t.register_lightning_node(&user_keypair.public_key()).await?;
+			let row = t.query_one("INSERT INTO lightning_payment_attempt
+				(lightning_node_id, payment_hash, amount_msat, status, created_at, updated_at)
+				VALUES ($1, $2, 1000, 'requested', NOW(), NOW()) RETURNING id",
+				&[&node, &hash.to_string()]).await?;
+			let id: i64 = row.get(0);
+			t.record_lightning_payment_error(id, "local rejection").await?;
+			Ok(())
+		}).await.unwrap();
+		db.write(async |t| {
+			let attempt = t.get_open_lightning_payment_attempt_by_payment_hash(hash).await?.unwrap();
+			assert_eq!(attempt.error.as_deref(), Some("local rejection"));
+			assert!(t.update_lightning_payment_attempt_status(&attempt,
+				crate::database::ln::LightningPaymentStatus::Failed, None).await?.is_some());
+			let row = t.query_one("SELECT error FROM lightning_payment_attempt WHERE id=$1", &[&attempt.id]).await?;
+			assert_eq!(row.get::<_, String>(0), "local rejection");
+			Ok(())
+		}).await.unwrap();
 		db.write(async |t| {
 			t.upsert_vtxos([ServerVtxo::from(input.clone()), ServerVtxo::from(refund.clone())]).await?;
 			t.record_lightning_setup_cost(input.id(), hash, Amount::from_sat(6000)).await?;
