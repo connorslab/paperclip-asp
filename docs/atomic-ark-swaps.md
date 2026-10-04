@@ -1,11 +1,48 @@
 # Direct atomic Ark swaps
 
 Decision: selected on 2026-10-04 UTC for `feature/inter-asp-openark`.
-Status: executable coordination model and standalone XBT regtest contracts.
-No Ark payment capability is implemented.
+Status: coordination model, candidate swap scripts, and signed VTXO locking test.
+No networked ASP-to-ASP payment capability is implemented.
 
 See the [plain-language walkthrough](atomic-swap-walkthrough.md) for the payment
 flow, liquidity movement, and failure cases.
+
+## Candidate swap policy
+
+`lib/src/experimental_swap.rs` now implements an independent claimant/refund
+contract. Cooperative claim requires participant and ASP signatures plus the
+preimage. Cooperative refund requires participant and ASP signatures after CLTV.
+Unilateral claim/refund omit the ASP signature but require CSV; refund also
+requires CLTV. A NUMS internal key prevents an unconditional key-path bypass.
+Keys must be distinct even when compressed-key parity differs. Heights and
+delays use the library's bounded policy validation.
+
+`just unit inter_asp_candidate` locks a real signed funded VTXO into this policy,
+validates its complete ancestry separately under two ASP keys, accounts for the
+added recovery allocation, and rejects a modified deadline. This test holds the
+fixture signing keys in one process. It does not demonstrate two running ASPs,
+settlement into a normal wallet VTXO, or broadcasts of that ancestry.
+
+`just unit swap_candidate` checks parameter bounds and commitment to every key,
+hash and timing term. `just int-swap-contract` tests all four spend paths on
+isolated XBT Knots, including wrong participant/server signatures, wrong secret,
+premature recovery/refund and conflicting spends. These chain tests use directly
+funded UTXOs, not the signed VTXO ancestry fixture.
+
+The candidate is a generic library policy only. There is no production wire
+discriminant, capability advertisement, database admission or wallet support.
+Existing policy encodings remain unchanged. Next implementation steps are:
+
+1. Add versioned settlement genesis proofs that validate both cooperative
+   signatures and the preimage, producing ordinary spendable destination VTXOs.
+2. Bind the policy's ASP key and recovery parameters to the enclosing VTXO;
+   enforce deadline margins against its complete ancestry and checkpoint expiry.
+3. Add negotiated experimental APIs and transactional spend guards for lock,
+   claim and refund, including restart-safe signature replay.
+4. Run two isolated captaind instances and wallets through successful settlement,
+   refunds, conflicting requests and independent recovery before any real funding.
+
+No final cross-ASP fee quote or production safety claim follows from these tests.
 
 ## Actual VTXO boundary test
 

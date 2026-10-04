@@ -624,6 +624,10 @@ mod test {
 	use super::*;
 	use crate::test_util::dummy::DummyTestVtxoSpec;
 	use crate::PublicKey;
+	use bitcoin::hashes::Hash;
+	use crate::vtxo::policy::Policy;
+	use crate::experimental_swap::SwapContract;
+	use crate::vtxo::genesis::{GenesisItem, GenesisTransition};
 
 	fn server_keypair() -> Keypair {
 		Keypair::from_str("f7a2a5d150afb575e98fff9caeebf6fbebbaeacfdfa7433307b208b39f1155f2").expect("Invalid key")
@@ -725,6 +729,46 @@ mod test {
 		assert!(policy.check_lightning_receive(dest_htlc, &dest_funding, BlockHeight::new(100),
 			&crate::lightning::Preimage::random()).is_err());
 		assert!(dest_htlc.validate(&source_funding).is_err());
+	}
+
+	#[test]
+	fn inter_asp_candidate_locks_real_vtxo_ancestry() {
+		let other_server = Keypair::from_str(
+			"1111111111111111111111111111111111111111111111111111111111111111").unwrap();
+		let secret = crate::lightning::Preimage::random();
+		for server in [server_keypair(), other_server] {
+			let (funding, input) = funded_test_input_for_server(Amount::from_sat(100_000), server);
+			let contract = SwapContract::new(bob_public_key(), alice_public_key(), server.public_key(),
+				secret.compute_payment_hash().to_sha256_hash(), 500, 128).unwrap();
+			let budget = crate::exit_policy::small_anchor_transfer_funding();
+			let tweak = input.output_taproot().tap_tweak();
+			let mut step = GenesisItem {
+				exit_format: budget.format(), miner_fee: budget.miner_fee(), fee_amount: budget.anchor(),
+				transition: GenesisTransition::new_arkoor(vec![alice_public_key()], tweak, None),
+				output_idx: 0, other_outputs: vec![],
+			};
+			let amount = input.amount() - budget.per_transaction();
+			let output = Policy::txout(&contract, amount, server.public_key(), input.exit_delta(), input.expiry_height());
+			let tx = step.tx(input.point(), output, server.public_key(), input.expiry_height());
+			let digest = bitcoin_ext::unified::digest(&tx, 0, &[input.txout()], bitcoin_ext::unified::ALL,
+				bitcoin_ext::unified::Execution { script_type: 2, script_code: None, annex: None, leaf: None }).unwrap();
+			let sig = crate::musig::cosign_both(&alice_keypair(), &server, digest.to_byte_array(), Some(tweak.to_byte_array()));
+			step.transition = GenesisTransition::new_arkoor(vec![alice_public_key()], tweak, Some(sig));
+			let mut genesis = input.genesis.clone();
+			genesis.items.push(step);
+			let locked = Vtxo {
+				policy: contract, amount, expiry_height: input.expiry_height(), server_pubkey: server.public_key(),
+				exit_delta: input.exit_delta(), anchor_point: input.chain_anchor(), genesis,
+				point: bitcoin::OutPoint::new(tx.compute_txid(), 0),
+			};
+			locked.validate(&funding).unwrap();
+			assert_eq!(locked.amount() + budget.per_transaction(), input.amount());
+			assert!(locked.exit_depth() > input.exit_depth());
+			let mut tampered = locked.clone();
+			tampered.policy = SwapContract::new(bob_public_key(), alice_public_key(), server.public_key(),
+				secret.compute_payment_hash().to_sha256_hash(), 501, 128).unwrap();
+			assert!(tampered.validate(&funding).is_err());
+		}
 	}
 
 	#[test]

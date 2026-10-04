@@ -148,6 +148,8 @@ pub trait Policy: Clone + Send + Sync + 'static {
 /// Type enum of [VtxoPolicy].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum VtxoPolicyKind {
+	/// Experimental only; no production wire policy or server admission.
+	ExperimentalSwap,
 	/// Standard VTXO output protected with a public key.
 	Pubkey,
 	/// A VTXO that represents an HTLC with the Ark server to send money.
@@ -182,6 +184,7 @@ pub enum VtxoPolicyKind {
 impl fmt::Display for VtxoPolicyKind {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
+			Self::ExperimentalSwap => f.write_str("experimental-swap-v1"),
 			Self::Pubkey => f.write_str("pubkey"),
 			Self::ServerHtlcSend => f.write_str("server-htlc-send-v1"),
 			Self::ServerHtlcRecv => f.write_str("server-htlc-receive-v1"),
@@ -202,6 +205,7 @@ impl FromStr for VtxoPolicyKind {
 	type Err = String;
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		Ok(match s {
+			"experimental-swap-v1" => Self::ExperimentalSwap,
 			"pubkey" => Self::Pubkey,
 			"server-htlc-send-v1" => Self::ServerHtlcSend,
 			"server-htlc-receive-v1" => Self::ServerHtlcRecv,

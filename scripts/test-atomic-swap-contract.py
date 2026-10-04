@@ -125,6 +125,43 @@ def main():
                     rpc('generatetoaddress', 1, miner)
                     assert rpc('gettxout', txid, 0)['confirmations'] == 1
                 checks['two_linked_contracts_confirmed'] = True
+                # Candidate cooperative policy: both participant and ASP sign.
+                # Recovery needs no ASP signature, but enforces CSV and CLTV.
+                expiry = rpc('getblockcount') + 12
+                candidate_address = tool('candidate-address', expiry, 'source', 3)
+                candidates = []
+                for _ in range(4):
+                    txid = rpc('sendtoaddress', candidate_address, 0.0005, wallet=True)
+                    tx = rpc('decoderawtransaction', rpc('gettransaction', txid, wallet=True)['hex'])
+                    vout = next(x['n'] for x in tx['vout'] if x['scriptPubKey'].get('address') == candidate_address)
+                    candidates.append((txid, vout))
+                rpc('generatetoaddress', 1, miner)
+
+                def candidate(index, mode):
+                    lock = expiry if mode in ('refund', 'recover-refund') else 0
+                    return tool('candidate-spend', expiry, *candidates[index], 50_000,
+                                destination, mode, lock, 'PUBLIC-REGTEST-KEYS', 'source', 3)
+
+                for mode in ('wrong-secret', 'wrong-key', 'wrong-server'):
+                    checks['candidate_' + mode] = check(candidate(0, mode), False).get('reject-reason')
+                check(candidate(0, 'success'), True)
+                checks['candidate_recovery_immature'] = check(candidate(1, 'recover-claim'), False).get('reject-reason')
+                check(candidate(2, 'refund'), False)
+                rpc('sendrawtransaction', candidate(0, 'success'))
+                rpc('generatetoaddress', 2, miner)
+                check(candidate(1, 'recover-claim'), True)
+                rpc('sendrawtransaction', candidate(1, 'recover-claim'))
+                rpc('generatetoaddress', expiry-rpc('getblockcount'), miner)
+                check(candidate(0, 'refund'), False)
+                check(candidate(1, 'recover-refund'), False)
+                for index, mode in [(2, 'refund'), (3, 'recover-refund')]:
+                    raw = candidate(index, mode)
+                    check(raw, True)
+                    txid = rpc('sendrawtransaction', raw)
+                    rpc('generatetoaddress', 1, miner)
+                    assert rpc('gettxout', txid, 0)['confirmations'] == 1
+                    check(candidate(index, 'success'), False)
+                checks['candidate_all_four_paths_and_conflicts'] = True
                 # Synthetic delayed ancestry: root -> parent -> claim. This
                 # models delay accumulation, NOT the real Ark checkpoint graph.
                 csv = 3
