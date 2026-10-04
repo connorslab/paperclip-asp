@@ -168,7 +168,7 @@ async fn xbt_lifecycle_late_receipt_and_backup() {
 
 #[tokio::test]
 async fn xbt_lifecycle_watchman_protects_refreshed_and_withdrawn_funds() {
-	for mode in ["round", "offboard-single", "offboard-multi"] {
+	for mode in ["round", "offboard-single", "offboard-multi", "offboard-small-anchor"] {
 		let ctx = TestContext::new(format!("xbt/watchman-{mode}")).await;
 		let srv = ctx.captaind("server").no_vtxo_pool().funded(btc(10))
 			.watchmand_cfg(|cfg| {
@@ -182,6 +182,11 @@ async fn xbt_lifecycle_watchman_protects_refreshed_and_withdrawn_funds() {
 		if mode == "offboard-multi" {
 			alice.board_and_confirm_and_register(&ctx, sat(200_000)).await;
 		}
+		let alice = if mode == "offboard-small-anchor" {
+			let receiver = ctx.bark("small-anchor-receiver", &srv).create().await;
+			alice.send_oor(&receiver.address().await, sat(100_000)).await;
+			receiver
+		} else { alice };
 		let points = alice.vtxo_ids().await.into_iter().map(|v| v.to_point()).collect::<Vec<_>>();
 		let stale = alice.full_clone("stale").await;
 		if mode == "round" {
@@ -189,6 +194,10 @@ async fn xbt_lifecycle_watchman_protects_refreshed_and_withdrawn_funds() {
 			bob.board_and_confirm_and_register(&ctx, sat(200_000)).await;
 			ctx.refresh_all(&srv, &[&alice, &bob]).await;
 			ctx.generate_blocks(ROUND_CONFIRMATIONS).await;
+			// Complete the post-confirmation forfeit exchange before simulating
+			// a revoked wallet; an unconfirmed participation is not yet revoked.
+			alice.sync().await;
+			bob.sync().await;
 		} else {
 			alice.offboard_all(&alice.get_onchain_address().await).await;
 			ctx.generate_blocks(3).await;
@@ -201,6 +210,15 @@ async fn xbt_lifecycle_watchman_protects_refreshed_and_withdrawn_funds() {
 		wm.trigger_sweep().await;
 		let msg = progress.recv().wait_millis(15000).await.expect("watchman did not protect stale exit");
 		let client = ctx.bitcoind().sync_client();
+		// The log is emitted by the server node before P2P relay reaches
+		// the independent test node. Wait for that relay, not a fixed sleep.
+		tokio::time::timeout(Duration::from_secs(15), async {
+			loop {
+				if [msg.txid, msg.cpfp_txid].iter().all(|txid|
+					client.get_raw_transaction(txid, None).is_ok()) { break; }
+				tokio::time::sleep(Duration::from_millis(100)).await;
+			}
+		}).await.expect("watchman protection transactions did not relay");
 		for txid in [msg.txid, msg.cpfp_txid] {
 			let tx = client.get_raw_transaction(&txid, None).unwrap();
 			assert_eq!(tx.version, bitcoin::transaction::Version::TWO, "watchman still depends on v3");
