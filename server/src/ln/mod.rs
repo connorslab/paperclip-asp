@@ -598,7 +598,7 @@ impl Server {
 		let mut reimbursement = Vec::new();
 		let mut pending = false;
 		for id in htlc_vtxo_ids {
-			let result = async {
+			let result: anyhow::Result<Vec<Vtxo<Full>>> = async {
 				let credit = self.db.read(async |t| t.lightning_failure_credit(*id).await).await?;
 				match credit {
 					Some(credit) => {
