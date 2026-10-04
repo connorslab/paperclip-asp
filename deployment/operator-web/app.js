@@ -10,6 +10,8 @@ async function api(path, body) {
 }
 async function refresh() {
   const state = await api('status');
+  $('lightning-status').textContent = state.lightning_enabled ? 'CONFIGURED' : 'DISABLED';
+  $('lightning-copy').textContent = state.lightning_enabled ? 'Lightning is configured. Verify the CLN connection, active channels and Ark pool liquidity before sending payments.' : 'Import a CLN connection in the stopped app configuration, then restart to enable Lightning.';
   $('details').textContent = JSON.stringify(state, null, 2);
   for (const [id, healthy] of [['asp-health', state.processes.asp], ['watchman-health', state.processes.watchman], ['rpc-health', state.asp_rpc_ready]]) {
     $(id).textContent = healthy ? (id === 'rpc-health' ? 'Connected' : 'Running') : 'Not ready';
