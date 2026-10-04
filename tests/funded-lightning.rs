@@ -1,9 +1,87 @@
 //! Isolated XBT regtest settlement and recovery; never production endpoints.
 use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
 use ark_testing::{btc, sat, TestContext};
+use ark_testing::daemon::captaind::{self, ArkClient};
 use ark_testing::util::FutureExt;
 use bitcoincore_rpc::RpcApi;
 use server::vtxopool::VtxoTarget;
+use server_rpc::protos;
+
+#[derive(Clone)]
+struct ExpiryAndLostRefund {
+	hold_dispatch: Arc<AtomicBool>,
+	grant: Arc<Mutex<Option<Vec<Vec<u8>>>>>,
+}
+
+#[async_trait::async_trait]
+impl captaind::proxy::ArkRpcProxy for ExpiryAndLostRefund {
+	async fn initiate_lightning_payment(
+		&self, upstream: &mut ArkClient, req: protos::InitiateLightningPaymentRequest,
+	) -> Result<protos::Empty, tonic::Status> {
+		if self.hold_dispatch.load(Ordering::SeqCst) {
+			return Err(tonic::Status::unavailable("test: hold dispatch until expiry"));
+		}
+		Ok(upstream.initiate_lightning_payment(req).await?.into_inner())
+	}
+	async fn request_lightning_pay_htlc_revocation(
+		&self, upstream: &mut ArkClient, req: protos::ArkoorPackageCosignRequest,
+	) -> Result<protos::ArkoorPackageCosignResponse, tonic::Status> {
+		let response = upstream.request_lightning_pay_htlc_revocation(req).await?.into_inner();
+		assert!(!response.reimbursement_pending);
+		assert!(!response.reimbursement_vtxos.is_empty());
+		let mut saved = self.grant.lock().unwrap();
+		if let Some(first) = &*saved {
+			assert_eq!(first, &response.reimbursement_vtxos, "retry must return the original grant");
+		} else {
+			*saved = Some(response.reimbursement_vtxos.clone());
+			return Err(tonic::Status::unavailable("test: lost committed refund response"));
+		}
+		Ok(response)
+	}
+}
+
+#[tokio::test]
+async fn xbt_funded_lightning_expiry_refund_lost_response() {
+	let ctx = TestContext::new("xbt/ln-expiry-credit").await;
+	let ln = ctx.new_lightning_setup("ln").await;
+	let srv = ctx.captaind("asp").lightningd(&ln.internal).funded(btc(2))
+		.cfg(|c| {
+			c.experimental_funded_lightning = true;
+			c.vtxopool.vtxo_targets = vec![VtxoTarget { amount: sat(200_000), count: 4 }];
+		}).create().await;
+	srv.wait_for_vtxopool(&ctx).await;
+	let gate = ExpiryAndLostRefund {
+		hold_dispatch: Arc::new(AtomicBool::new(true)), grant: Arc::new(Mutex::new(None)),
+	};
+	let proxy = srv.start_proxy_no_mailbox(gate.clone()).await;
+	let wallet = ctx.bark("sender", &proxy).funded(sat(200_000)).create().await;
+	wallet.board_and_confirm_and_register(&ctx, sat(100_000)).await;
+	let before = wallet.spendable_balance().await;
+	ln.sync().await;
+	let invoice = ln.external.grpc_client().await.invoice(cln_rpc::InvoiceRequest {
+		label: "expires-after-cosign".into(), description: "private regression".into(),
+		amount_msat: Some(cln_rpc::AmountOrAny {
+			value: Some(cln_rpc::amount_or_any::Value::Amount(cln_rpc::Amount { msat: 20_000_000 })),
+		}), expiry: Some(45), ..Default::default()
+	}).await.unwrap().into_inner().bolt11;
+	let _ = wallet.try_pay_lightning(&invoice, None, false).await;
+	assert!(!wallet.client().await.pending_lightning_send_vtxos().await.unwrap().is_empty());
+	tokio::time::sleep(Duration::from_secs(46)).await;
+	gate.hold_dispatch.store(false, Ordering::SeqCst);
+	tokio::time::timeout(Duration::from_secs(120), async {
+		loop {
+			wallet.sync().await;
+			if wallet.spendable_balance().await == before { break; }
+			tokio::time::sleep(Duration::from_secs(1)).await;
+		}
+	}).await.expect("principal and recovery reserves were not restored after retry");
+	assert!(gate.grant.lock().unwrap().is_some());
+	assert_eq!(wallet.offchain_balance().await.pending_lightning_send, sat(0));
+	wallet.sync().await;
+	assert_eq!(wallet.spendable_balance().await, before, "retry must not create another grant");
+}
 
 #[tokio::test]
 async fn xbt_funded_lightning_settlement() {
@@ -47,14 +125,14 @@ async fn xbt_funded_lightning_settlement() {
 		wallet.lightning_receive(&invoice.invoice).wait_millis(60_000),
 	);
 	assert_eq!(wallet.spendable_balance().await, sat(420_000));
-	// A disconnected recipient must refund the HTLC, retaining only actual reserves.
+	// An unreachable public recipient is rejected before reserving any funds.
 	let refund_wallet = ctx.bark("refund-wallet", &srv).funded(sat(200_000)).create().await;
 	refund_wallet.board_and_confirm_and_register(&ctx, sat(100_000)).await;
 	let unreachable = ctx.lightningd("unreachable").create().await;
 	let invoice = unreachable.invoice(Some(sat(20_000)), "refund", "refund test").await;
-	refund_wallet.try_pay_lightning(&invoice, None, true).await.unwrap();
+	assert!(refund_wallet.try_pay_lightning(&invoice, None, true).await.is_err());
 	refund_wallet.sync().await;
-	assert_eq!(refund_wallet.spendable_balance().await, sat(88_000));
+	assert_eq!(refund_wallet.spendable_balance().await, sat(98_000));
 	assert_eq!(refund_wallet.offchain_balance().await.pending_lightning_send, sat(0));
 }
 

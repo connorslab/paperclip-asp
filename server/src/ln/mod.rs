@@ -22,7 +22,7 @@ use tracing::{error, info, trace, warn};
 use ark::{Vtxo, VtxoId, VtxoPolicy, VtxoRequest, ServerVtxo};
 use ark::arkoor::ArkoorDestination;
 use ark::vtxo::Full;
-use ark::arkoor::package::{ArkoorPackageCosignRequest, ArkoorPackageCosignResponse};
+use ark::arkoor::package::{ArkoorPackageBuilder, ArkoorPackageCosignRequest, ArkoorPackageCosignResponse};
 use ark::attestations::LightningReceiveAttestation;
 use ark::fees::{validate_and_subtract_fee, VtxoFeeInfo};
 use ark::integration::{TokenStatus, TokenType};
@@ -194,22 +194,9 @@ impl Server {
 			return badarg!("payment hash collides with an existing unlock hash");
 		}
 
-		// Bail early if this invoice was already paid to avoid setting up HTLCs
-		// just to have them revoked some time later.
-		if self.htlc_settler.is_settled(payment_hash).await?.is_some() {
-			return badarg!("invoice has already been paid");
-		}
-
 		// Verify that the proposed expiry makes sense for us
 		let tip = self.sync_manager.chain_tip().height;
 		let expiry = tip + self.config.htlc_send_expiry_delta;
-
-		if self.db.read(async |t| t.get_open_lightning_payment_attempt_by_payment_hash(
-			payment_hash,
-		).await).await?.is_some()
-		{
-			return badarg!("payment already in progress for this invoice");
-		}
 
 		let validation = ArkoorCosignRequestValidationParams {
 			allow_lightning_send: true,
@@ -234,6 +221,14 @@ impl Server {
 			vtxo.check_spendable_for_oor(chain_tip, *spending_txid)?;
 		}
 		if !replay {
+			if self.htlc_settler.is_settled(payment_hash).await?.is_some() {
+				return badarg!("invoice has already been paid");
+			}
+			if self.db.read(async |t| t.get_open_lightning_payment_attempt_by_payment_hash(
+				payment_hash,
+			).await).await?.is_some() {
+				return badarg!("payment already in progress for this invoice");
+			}
 			if requested_policy.htlc_expiry < expiry.saturating_sub(BlockDelta::new(1)) {
 				return badarg!("requested expiry is too low; sync your node and try again");
 			}
@@ -455,8 +450,8 @@ impl Server {
 		}
 
 		let htlc_vtxo_ids = cosign_request.inputs().cloned().collect::<Vec<VtxoId>>();
-		let htlc_vtxos = self.db.read(async |t| t.get_user_vtxos_by_id(&htlc_vtxo_ids).await).await?.into_iter()
-			.map(|v| v.vtxo).collect::<Vec<_>>();
+		let htlc_states = self.db.read(async |t| t.get_user_vtxos_by_id(&htlc_vtxo_ids).await).await?;
+		let htlc_vtxos = htlc_states.iter().map(|v| v.vtxo.clone()).collect::<Vec<_>>();
 
 		let input_policy = htlc_vtxos.iter()
 			.all_same(|v| v.policy())
@@ -473,11 +468,24 @@ impl Server {
 			htlc_vtxo_ids: htlc_vtxo_ids.clone(),
 		);
 
+		let cosign_request = cosign_request.set_vtxos(htlc_vtxos)?;
+		// An exact committed refund remains retrievable after a lost response,
+		// a later attempt for the same invoice, or expiry of the original input.
+		// The builder verifies the user's attestation before comparing txids.
+		let replay_builder = ArkoorPackageBuilder::from_cosign_request(cosign_request.clone())
+			.map_err(|(_, e)| anyhow::anyhow!(e)).badarg("invalid revocation request")?;
+		let spends = replay_builder.spend_info().collect::<HashMap<_, _>>();
+		let replay = !htlc_states.is_empty() && htlc_states.iter().all(|v|
+			v.oor_spent_txid.is_some() && v.oor_spent_txid.as_ref() == spends.get(&v.vtxo_id));
+		if replay {
+			let response = replay_builder.server_cosign(self.server_key.leak_ref())?.cosign_response();
+			let (credits, pending) = self.lightning_failure_reimbursements(&htlc_vtxo_ids).await;
+			return Ok((response, credits, pending));
+		}
+
 		if self.htlc_settler.is_settled(payment_hash).await?.is_some() {
 			return badarg!("invoice has already been paid");
 		}
-
-		let cosign_request = cosign_request.set_vtxos(htlc_vtxos)?;
 
 		let validation = ArkoorCosignRequestValidationParams {
 			allow_lightning_send: false,
@@ -572,9 +580,14 @@ impl Server {
 
 		slog!(LightningPayHtlcsRevoked, payment_hash, htlc_vtxo_ids, new_vtxo_ids);
 
+		let (reimbursement, pending) = self.lightning_failure_reimbursements(&htlc_vtxo_ids).await;
+		Ok((builder.cosign_response(), reimbursement, pending))
+	}
+
+	async fn lightning_failure_reimbursements(&self, htlc_vtxo_ids: &[VtxoId]) -> (Vec<Vtxo<Full>>, bool) {
 		let mut reimbursement = Vec::new();
 		let mut pending = false;
-		for id in &htlc_vtxo_ids {
+		for id in htlc_vtxo_ids {
 			let result = async {
 				let credit = self.db.read(async |t| t.lightning_failure_credit(*id).await).await?;
 				match credit {
@@ -590,7 +603,7 @@ impl Server {
 				}
 			}
 		}
-		Ok((builder.cosign_response(), reimbursement, pending))
+		(reimbursement, pending)
 	}
 
 	#[tracing::instrument(skip(self))]

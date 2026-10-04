@@ -228,7 +228,6 @@ impl LightningManager {
 		self.node_handles.read().iter().find(|h| h.id == id).cloned()
 	}
 
-	/// Pays a bolt-11 invoice
 	/// Probe public routes before the client commits recovery reserves. This
 	/// does not reserve liquidity or send an HTLC; the payment can still fail.
 	pub async fn preflight_payment(

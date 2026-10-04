@@ -35,8 +35,10 @@ mod tests {
 			connection_timeout_secs: 10, idle_timeout_secs: 90,
 		};
 		let db = Db::connect(&config).await.unwrap();
+		let user_keypair = bitcoin::secp256k1::Keypair::new(&ark::SECP,
+			&mut bitcoin::secp256k1::rand::thread_rng());
 		let build = |amount| DummyTestVtxoSpec {
-			amount: Amount::from_sat(amount), fee: Amount::ZERO, ..Default::default()
+			amount: Amount::from_sat(amount), fee: Amount::ZERO, user_keypair, ..Default::default()
 		}.build().1;
 		let input = build(20_000);
 		let refund = build(16_000);
@@ -55,6 +57,10 @@ mod tests {
 		assert!(db.write(async |t| t.record_lightning_setup_cost(input.id(), hash, Amount::from_sat(9000)).await).await.is_err());
 		assert!(db.write(async |t| t.record_lightning_refund_cost(input.id(), input.id(), Amount::from_sat(4000)).await).await.is_err());
 		assert!(db.write(async |t| t.complete_lightning_failure_credit(&credit, &[refund.clone()]).await).await.is_err());
+		let wrong_recipient = DummyTestVtxoSpec {
+			amount: Amount::from_sat(10_000), fee: Amount::ZERO, ..Default::default()
+		}.build().1;
+		assert!(db.write(async |t| t.complete_lightning_failure_credit(&credit, &[wrong_recipient]).await).await.is_err());
 		// Simulate a transaction failing after preparing the signed grant.
 		let aborted: anyhow::Result<()> = db.write(async |t| {
 			t.complete_lightning_failure_credit(&credit, &[grant.clone()]).await?;
@@ -74,8 +80,19 @@ mod tests {
 		assert!(db.write(async |t| t.complete_lightning_failure_credit(&credit, &[grant.clone()]).await).await.is_err());
 		// Settlement remains an independent source of truth, not merely the
 		// attempt's mutable "failed" status.
-		db.write(async |t| { t.store_htlc_settlement(preimage).await?; Ok(()) }).await.unwrap();
-		assert!(db.write(async |t| t.complete_lightning_failure_credit(&credit, &[grant]).await).await.is_err());
+		let unsettled_input = build(30_000);
+		let unsettled_refund = build(26_000);
+		let settled = Preimage::random();
+		db.write(async |t| {
+			t.upsert_vtxos([ServerVtxo::from(unsettled_input.clone()), ServerVtxo::from(unsettled_refund.clone())]).await?;
+			t.record_lightning_setup_cost(unsettled_input.id(), settled.compute_payment_hash(), Amount::from_sat(6000)).await?;
+			t.record_lightning_refund_cost(unsettled_input.id(), unsettled_refund.id(), Amount::from_sat(4000)).await?;
+			t.approve_unstarted_expired_payment(&[unsettled_input.id()]).await
+		}).await.unwrap();
+		let unpaid = db.read(async |t| t.lightning_failure_credit(unsettled_input.id()).await).await.unwrap().unwrap();
+		assert!(unpaid.paid.is_none());
+		db.write(async |t| { t.store_htlc_settlement(settled).await?; Ok(()) }).await.unwrap();
+		assert!(db.write(async |t| t.complete_lightning_failure_credit(&unpaid, &[grant]).await).await.is_err());
 	}
 }
 

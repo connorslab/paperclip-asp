@@ -19,15 +19,32 @@ jobs:
         options: --health-cmd pg_isready --health-interval 5s --health-retries 12
     env:
       CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
       CARGO_PROFILE_TEST_DEBUG: 0
       CARGO_PROFILE_DEV_DEBUG: 0
       PAPERCLIP_CREDIT_TEST_DB: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-lnfix-${{ hashFiles('Cargo.lock', 'flake.lock') }}-${{ github.sha }}
+          restore-keys: ${{ runner.os }}-lnfix-${{ hashFiles('Cargo.lock', 'flake.lock') }}-
       - run: sha256sum -c SHARED-SOURCE.sha256
       - run: nix develop --command cargo check --locked -p bark-server --tests
       - run: nix develop --command just unit-server lightning_credit
       - run: nix develop --command just unit-server rejection_tests
       - run: nix develop --command just unit funded_lightning
       - run: nix develop --command just unit lightning_send_lifetime
+      - uses: actions/cache/save@v4
+        if: always() && !cancelled()
+        with:
+          path: |
+            target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-lnfix-${{ hashFiles('Cargo.lock', 'flake.lock') }}-${{ github.sha }}
