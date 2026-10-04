@@ -102,6 +102,9 @@ impl ClnXpayClient {
 	) {
 		let mut rpc = self.rpc.clone();
 		let payment_hash = invoice.payment_hash();
+		let attempt_id = self.db.read(async |t|
+			t.get_open_lightning_payment_attempt_by_payment_hash(payment_hash).await
+		).await.ok().flatten().map(|a| a.id);
 		match call_xpay(
 			&mut rpc, &invoice, payment_amount, max_routing_fee, max_cltv_expiry_delta, retry_for,
 		).await {
@@ -113,6 +116,26 @@ impl ClnXpayClient {
 			// Fetch and store the attempt as failed.
 			Err(pay_err) => {
 				debug!("Error calling pay-command: {}", pay_err);
+				if let Some(id) = attempt_id {
+					let reason = pay_err.to_string();
+					let local_rejection = pay_err.downcast_ref::<tonic::Status>()
+						.is_some_and(is_local_xpay_rejection);
+					let no_dispatch = if local_rejection {
+						self.rpc.clone().list_send_pays(cln_rpc::ListsendpaysRequest {
+							payment_hash: Some(payment_hash.to_vec()), ..Default::default()
+						}).await.map(|r| r.into_inner().payments.is_empty()).unwrap_or(false)
+					} else { false };
+					let saved = self.db.write(async |t| {
+						t.execute("UPDATE lightning_payment_attempt SET error=$2 WHERE id=$1",
+							&[&id, &reason]).await?;
+						if no_dispatch {
+							t.ensure_not_settled(payment_hash).await?;
+							t.approve_local_lightning_failure(id).await?;
+						}
+						Ok(())
+					}).await;
+					if let Err(e) = saved { error!("Failed to record xpay rejection: {e:#}"); }
+				}
 			},
 		}
 
@@ -240,6 +263,29 @@ impl ClnXpayClient {
 		}
 
 		Ok(())
+	}
+}
+
+/// The CLN gRPC adapter exposes these local RPC errors as Unknown. Fail
+/// closed on any other encoding, transport failure, or routing failure.
+fn is_local_xpay_rejection(error: &tonic::Status) -> bool {
+	error.code() == tonic::Code::Unknown && [206, 207].iter().any(|code|
+		error.message().starts_with(&format!("Error calling method Xpay: RpcError {{ code: Some({code}),")))
+}
+
+#[cfg(test)]
+mod rejection_tests {
+	use super::*;
+	#[test]
+	fn local_rejection_never_accepts_transport_uncertainty() {
+		for code in [206, 207] {
+			let text = format!("Error calling method Xpay: RpcError {{ code: Some({code}), message: failure }}");
+			assert!(is_local_xpay_rejection(&tonic::Status::unknown(&text)));
+			assert!(!is_local_xpay_rejection(&tonic::Status::deadline_exceeded(&text)));
+		}
+		assert!(!is_local_xpay_rejection(&tonic::Status::unknown("timeout")));
+		assert!(!is_local_xpay_rejection(&tonic::Status::unknown(
+			"Error calling method Xpay: RpcError { code: Some(204), message: failed }")));
 	}
 }
 

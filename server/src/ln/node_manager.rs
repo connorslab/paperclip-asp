@@ -229,6 +229,41 @@ impl LightningManager {
 	}
 
 	/// Pays a bolt-11 invoice
+	/// Probe public routes before the client commits recovery reserves. This
+	/// does not reserve liquidity or send an HTLC; the payment can still fail.
+	pub async fn preflight_payment(
+		&self, invoice: &Invoice, amount: Amount, max_fee: Amount, expiry: BlockHeight,
+	) -> anyhow::Result<()> {
+		let node = self.active_node().context("no active Lightning backend")?;
+		let mut rpc = node.rpc.clone();
+		let tip = rpc.getinfo(cln_rpc::GetinfoRequest {}).await?.into_inner().blockheight;
+		let delay = expiry.checked_blocks_since(BlockHeight::new(tip) + self.htlc_expiry_delta)
+			.context("insufficient HTLC recovery margin")?;
+		// Public gossip cannot prove a private or blinded route. Do not reject
+		// those invoices merely because the public graph has no path.
+		if let Invoice::Bolt11(inv) = invoice {
+			let final_cltv = u32::try_from(inv.min_final_cltv_expiry_delta())
+				.context("invoice final CLTV is too large")?;
+			ensure!(u64::from(final_cltv) <= u64::from(delay), "invoice CLTV exceeds the safe payment delay");
+			if inv.route_hints().is_empty() {
+				let request = cln_rpc::GetroutesRequest {
+					source: node.pubkey.serialize().to_vec(),
+					destination: inv.recover_payee_pub_key().serialize().to_vec(),
+					amount_msat: Some(amount.into()),
+					layers: vec!["auto.localchans".into(), "auto.sourcefree".into(), "xpay".into()],
+					maxfee_msat: Some(max_fee.into()),
+					final_cltv, maxdelay: Some(u32::try_from(delay).context("delay overflow")?),
+					maxparts: None,
+				};
+				let routes = tokio::time::timeout(Duration::from_secs(10), rpc.get_routes(request))
+					.await.context("route check timed out")??.into_inner();
+				ensure!(!routes.routes.is_empty(), "no route within the safe fee and delay limits");
+			}
+		}
+		Ok(())
+	}
+
+	/// Pays a bolt-11 invoice
 	///
 	/// This method is also more clever than calling the grpc-method.
 	/// We might be able to recover from a short connection-break or time-outs

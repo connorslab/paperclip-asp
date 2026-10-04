@@ -22,6 +22,7 @@ use bitcoin_ext::{BlockDelta, BlockHeight, BlockRef, P2TR_DUST};
 use bitcoin_ext::bdk::{WalletExt, WithGuaranteedChange};
 
 use crate::database::vtxopool::PoolVtxo;
+use crate::database::lightning_credit::FailureCredit;
 use crate::database::htlc_vtxo::{self, HtlcDirection};
 use crate::database::tree::VtxoTreeUpdate;
 use crate::wallet::BdkWalletExt;
@@ -307,6 +308,7 @@ impl VtxoPool {
 		srv: &Server,
 		dest: ArkoorDestination,
 		inputs: &[(VtxoId, BlockHeight, Amount)],
+		credit: Option<&FailureCredit>,
 	) -> anyhow::Result<Vec<Vtxo<Full>>> {
 		let input_ids = inputs.iter().map(|v| v.0).collect::<Vec<_>>();
 		let mut input_vtxos = srv.db.read(async |t| t.get_pool_vtxos_by_ids(&input_ids).await).await?;
@@ -335,10 +337,13 @@ impl VtxoPool {
 		};
 
 		let change_key = srv.generate_ephemeral_cosign_key(self.config.vtxo_key_lifetime()).await?;
-		let (builder, _reserve) = ArkoorPackageBuilder::new_funded_lightning_receive(
-			input_vtxos.into_iter().map(|v| v.into_inner()).collect(), dest.clone(),
-			VtxoPolicy::new_pubkey(change_key.public_key()),
-		).context("funded pool allocation failed")?;
+		let full_inputs = input_vtxos.into_iter().map(|v| v.into_inner()).collect();
+		let change_policy = VtxoPolicy::new_pubkey(change_key.public_key());
+		let (builder, _reserve) = if credit.is_some() {
+			ArkoorPackageBuilder::new_funded_payment(full_inputs, dest.clone(), change_policy)
+		} else {
+			ArkoorPackageBuilder::new_funded_lightning_receive(full_inputs, dest.clone(), change_policy)
+		}.context("funded pool allocation failed")?;
 		let builder = builder.cosign_both(&keys, srv.server_key.leak_ref())
 			.context("error cosigning arkoor")?;
 
@@ -351,6 +356,14 @@ impl VtxoPool {
 			.partition::<Vec<_>, _>(|v| *v.policy() == dest.policy);
 
 		for vtxo in &sent {
+			if credit.is_some() {
+				ensure!(matches!(vtxo.policy(), VtxoPolicy::Pubkey(_)), "invalid reimbursement destination");
+				ensure!(pool_receive_has_headroom(srv.chain_tip().height.to_u32(),
+					u32::from(vtxo.exit_depth()), u32::from(vtxo.exit_delta().to_u16()),
+					0, vtxo.expiry_height().to_u32(), vtxo.expiry_height().to_u32()),
+					"reimbursement has insufficient recovery headroom");
+				continue;
+			}
 			let VtxoPolicy::ServerHtlcRecv(p) = vtxo.policy() else { bail!("invalid pool destination"); };
 			ensure!(pool_receive_has_headroom(srv.chain_tip().height.to_u32(),
 				u32::from(vtxo.exit_depth()), u32::from(vtxo.exit_delta().to_u16()),
@@ -364,7 +377,8 @@ impl VtxoPool {
 			.insert_oor_spent_vtxos(internal_vtxos)
 			.insert_unspent_vtxos(
 				sent.iter().cloned().map(ServerVtxo::from),
-				database::SpendState::HtlcRecvUnclaimed,
+				if credit.is_some() { database::SpendState::Spendable }
+				else { database::SpendState::HtlcRecvUnclaimed },
 			)
 			.insert_unspent_vtxos(
 				change.iter().cloned().map(ServerVtxo::from),
@@ -385,6 +399,11 @@ impl VtxoPool {
 			.collect::<Vec<_>>();
 
 		srv.db.write(async |t| {
+			if let Some(credit) = credit {
+				// Persist the exact signed result in the SAME transaction as the
+				// pool spend. A retry after a lost response returns these bytes.
+				t.complete_lightning_failure_credit(credit, &sent).await?;
+			}
 			t.execute_vtxo_tree_update(update).await?;
 			htlc_vtxo::create_htlc_vtxos(&t, &htlc_recvs, HtlcDirection::Outgoing).await?;
 			t.mark_vtxopool_vtxos_spent(inputs.iter().map(|v| v.0)).await
@@ -435,19 +454,40 @@ impl VtxoPool {
 		srv: &Server,
 		dest: ArkoorDestination,
 	) -> anyhow::Result<Vec<Vtxo<Full>>> {
-		let VtxoPolicy::ServerHtlcRecv(policy) = &dest.policy else {
-			bail!("invalid pool destination");
-		};
+		self.send_funded_arkoor(srv, dest, None).await
+	}
+
+	pub(crate) async fn reimburse(
+		&self, srv: &Server, credit: &FailureCredit,
+	) -> anyhow::Result<Vec<Vtxo<Full>>> {
+		if let Some(paid) = &credit.paid { return Ok(paid.clone()); }
+		let refund = srv.db.read(async |t| t.get_user_vtxos_by_id(&[credit.refund_id]).await).await?;
+		let policy = refund.first().context("missing refund VTXO")?.vtxo.policy().clone();
+		ensure!(matches!(&policy, VtxoPolicy::Pubkey(_)), "refund recipient is not a pubkey");
+		self.send_funded_arkoor(srv, ArkoorDestination {
+			total_amount: credit.amount, policy,
+		}, Some(credit)).await
+	}
+
+	async fn send_funded_arkoor(
+		&self, srv: &Server, dest: ArkoorDestination, credit: Option<&FailureCredit>,
+	) -> anyhow::Result<Vec<Vtxo<Full>>> {
+		ensure!(matches!(&dest.policy, VtxoPolicy::ServerHtlcRecv(_))
+			|| (credit.is_some() && matches!(&dest.policy, VtxoPolicy::Pubkey(_))), "invalid pool destination");
 		// Snapshot candidates without holding the mutex across database I/O.
 		let ids = self.data.lock().pool.values().flat_map(|bucket| bucket.values())
 			.flatten().copied().collect::<Vec<_>>();
 		let candidates = srv.db.read(async |t| t.get_pool_vtxos_by_ids(&ids).await).await?;
 		let tip = srv.chain_tip().height.to_u32();
 		let eligible = candidates.iter().filter(|v| {
+			let (htlc_delta, expiry) = match &dest.policy {
+				VtxoPolicy::ServerHtlcRecv(p) => (u32::from(p.htlc_expiry_delta.to_u16()), p.htlc_expiry.to_u32()),
+				_ => (0, v.expiry_height().to_u32()),
+			};
 			// A funded receive adds a checkpoint and an HTLC transaction.
 			pool_receive_has_headroom(tip, u32::from(v.exit_depth()) + 2,
-				u32::from(v.exit_delta().to_u16()), u32::from(policy.htlc_expiry_delta.to_u16()),
-				policy.htlc_expiry.to_u32(), v.expiry_height().to_u32())
+				u32::from(v.exit_delta().to_u16()), htlc_delta,
+				expiry, v.expiry_height().to_u32())
 		}).map(|v| v.id()).collect::<HashSet<_>>();
 		let inputs = {
 			let mut data = self.data.lock();
@@ -467,7 +507,7 @@ impl VtxoPool {
 		}
 
 		// we try, but if we fail, we place back the inputs
-		match self.prepare_arkoor(srv, dest, &inputs).await {
+		match self.prepare_arkoor(srv, dest, &inputs, credit).await {
 			Ok(v) => {
 				update_all_bucket_metrics(&self.data);
 				Ok(v)

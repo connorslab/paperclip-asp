@@ -15,6 +15,7 @@ pub mod htlc_vtxo;
 pub mod watchman;
 pub mod intman;
 pub mod ln;
+pub mod lightning_credit;
 pub mod nursery;
 pub mod rounds;
 pub mod tree;
