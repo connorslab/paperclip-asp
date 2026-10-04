@@ -1,0 +1,120 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 0e5a190..0091dfc 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1288,8 +1288,6 @@ dependencies = [
+ [[package]]
+ name = "lightning-types"
+ version = "0.3.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "cb1aac93f22f2c2eac8a0ee83bb1a1ea58673caa2c82847302710b83364d04e6"
+ dependencies = [
+  "bitcoin",
+ ]
+diff --git a/Cargo.toml b/Cargo.toml
+index ce27a06..ae548d5 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -77,3 +77,6 @@ tonic-prost-build = "0.14.5"
+ 
+ [dev-dependencies]
+ mockall = "0.14.0"
++
++[patch.crates-io]
++lightning-types = { path = "vendor/lightning-types" }
+diff --git a/src/commands/inject.rs b/src/commands/inject.rs
+index bb2d498..bf4ab0e 100644
+--- a/src/commands/inject.rs
++++ b/src/commands/inject.rs
+@@ -45,6 +45,7 @@ where
+ {
+     let params = parse_args::<InjectInvoiceRequest>(args)?;
+     let invoice = Invoice::from_str(&params.invoice)?;
++    invoice.require_xbt()?;
+ 
+     // Sanity check that the invoice can go through us
+     if !invoice.related_to_node(plugin.state().our_id) {
+diff --git a/src/encoder.rs b/src/encoder.rs
+index 7b5262e..8e7bd82 100644
+--- a/src/encoder.rs
++++ b/src/encoder.rs
+@@ -130,6 +130,8 @@ impl Encoder {
+             .call_typed(&SigninvoiceRequest { invstring })
+             .await?;
+ 
++        let decoded: crate::invoice::Invoice = signed.bolt11.parse()?;
++        decoded.require_xbt()?;
+         Ok(signed.bolt11)
+     }
+ }
+@@ -189,8 +191,20 @@ impl InvoiceEncoder for Encoder {
+             builder.description("".into())
+         };
+ 
+-        let invoice = builder
+-            .build_signed(|hash| Secp256k1::new().sign_ecdsa_recoverable(hash, &self.secret_key))?;
++        let mut raw = builder.build_raw()?;
++        let mut marked = false;
++        for field in &mut raw.data.tagged_fields {
++            if let lightning_invoice::RawTaggedField::KnownSemantics(
++                lightning_invoice::TaggedField::Features(features),
++            ) = field {
++                features.set_blake2b_identity_required();
++                marked = true;
++            }
++        }
++        anyhow::ensure!(marked, "missing invoice feature field");
++        let invoice = raw.sign::<_, std::convert::Infallible>(|hash| {
++            Ok(Secp256k1::new().sign_ecdsa_recoverable(hash, &self.secret_key))
++        })?;
+ 
+         self.sign_invoice_rpc(invoice.to_string()).await
+     }
+diff --git a/src/grpc/service.rs b/src/grpc/service.rs
+index 9568f95..552abd5 100644
+--- a/src/grpc/service.rs
++++ b/src/grpc/service.rs
+@@ -149,6 +149,8 @@ where
+         let invoice = Invoice::from_str(&params.invoice)
+             .map_err(|err| Status::new(Code::InvalidArgument, format!("invalid invoice: {err}")))?;
+ 
++        invoice.require_xbt().map_err(|err| Status::invalid_argument(err.to_string()))?;
++
+         // Sanity check that the invoice can go through us
+         if !invoice.related_to_node(self.our_id) {
+             return Err(Status::new(
+diff --git a/src/invoice/mod.rs b/src/invoice/mod.rs
+index 02c61f7..32cb35d 100644
+--- a/src/invoice/mod.rs
++++ b/src/invoice/mod.rs
+@@ -18,6 +18,17 @@ pub enum Invoice {
+ }
+ 
+ impl Invoice {
++    pub fn require_xbt(&self) -> Result<()> {
++        let features = match self {
++            Invoice::Bolt11(i) => i.features().map(|f| f.le_flags()),
++            Invoice::Bolt12(i) => Some(i.invoice_features().le_flags()),
++        };
++        if !features.is_some_and(|f| f.get(64).is_some_and(|byte| byte & 1 != 0)) {
++            return Err(anyhow!("invoice is missing required XBT identity bit 512"));
++        }
++        Ok(())
++    }
++
+     pub fn payment_hash(&self) -> [u8; 32] {
+         match self {
+             Invoice::Bolt11(invoice) => *invoice.payment_hash().as_byte_array(),
+@@ -129,6 +140,12 @@ mod test {
+     const BOLT11_INVOICE: &str = "lnbcrt1230p1pnwzkshsp584p434kjslfl030shwps75nvy4leq5k6psvdxn4kzsxjnptlmr3spp5nxqauehzqkx3xswjtrgx9lh5pqjxkyx0kszj0nc4m4jn7uk9gc5qdq8v9ekgesxqyjw5qcqp29qxpqysgqu6ft6p8c36khp082xng2xzmta25nlg803qjncal3fhzw8eshrsdyevhlgs970a09n95r3gtvqvvyk24vyv4506cu6cxl8ytaywrjkhcp468qnl";
+     const BOLT12_INVOICE: &str = "lni1qqgth299fq4pg07a2jnjjxg6apy37q3qqc3xu3s3rg94nj40zfsy866mhu5vxne6tcej5878k2mneuvgjy8s5prpwdjxv93pqfjg8jssphjkw8td4vxcmrdxzrqd4sweg3uhy003cq0lljh62enfx5pqqc3xu3s3rg94nj40zfsy866mhu5vxne6tcej5878k2mneuvgjy84yqucj6q9sggzymg62fj8dfjzz3uvmft8xeufw62x0a5znkc38f0jk04wqrkvwsy6pxqzvjpu5yqdu4n36mdtpkxcmfsscrdvrk2y09ermuwqrllu47jkv6fs9tuwsyhaydearc5eyax2lmlc8apwhp8n5yynlpr4lm058y9a8f50qypsd4f70enu0x03ecscycu5d350e42x02fmtkzskzc6a453h5adh3gqx25k2jgjzxh6rdxhlmhtvm3f89wpxms2hm3cff7mkx63y7s3vp7f5xzya6lw9sc9v5hlr69pcxcvx3emt23pcqqqqqqqqqqqqqqq5qqqqqqqqqqqqqwjfvkl43fqqqqqqzjqgehz6n86sg9hp98lphy7x4rrxejy48yzs5srcfmzdqeuwzglfym8r7fmtvce7x4q8xykszczzqnys09pqr09vuwkm2cd3kx6vyxqmtqaj3rewg7lrsqlll9054nxj0cyqg5ltjmfnrm8nerkvj0uz4wfn9annnm9r3fyx4w08hj463nmya8vmutf8fmufgzvfgkyea03tltjyn2qynt8ufenhxkh5nrl5usa2f8q";
+ 
++    #[test]
++    fn xbt_rejects_bitcoin_invoices() {
++        assert!(Invoice::from_str(BOLT11_INVOICE).unwrap().require_xbt().is_err());
++        assert!(Invoice::from_str(BOLT12_INVOICE).unwrap().require_xbt().is_err());
++    }
++
+     #[test]
+     fn test_from_str() {
+         assert_eq!(
