@@ -151,7 +151,7 @@ fn validate_receive_claim(
 }
 
 impl Server {
-	#[tracing::instrument(skip(self, request))]
+	#[tracing::instrument(skip(self, request, invoice))]
 	pub async fn request_lightning_pay_htlc_cosign(
 		&self,
 		request: ArkoorPackageCosignRequest<VtxoId>,
@@ -578,7 +578,7 @@ impl Server {
 		let builder = builder.server_cosign(self.server_key.leak_ref())
 			.context("Failed to sign")?;
 
-		slog!(LightningPayHtlcsRevoked, payment_hash, htlc_vtxo_ids, new_vtxo_ids);
+		slog!(LightningPayHtlcsRevoked, payment_hash, htlc_vtxo_ids: htlc_vtxo_ids.clone(), new_vtxo_ids);
 
 		let (reimbursement, pending) = self.lightning_failure_reimbursements(&htlc_vtxo_ids).await;
 		Ok((builder.cosign_response(), reimbursement, pending))

@@ -302,7 +302,7 @@ impl VtxoPool {
 	///
 	/// The caller is responsible for requesting arkoor preparation
 	/// with correct destination: [`VtxoPolicy::ServerHtlcRecv`]
-	#[tracing::instrument(skip(self, srv))]
+	#[tracing::instrument(skip(self, srv, credit))]
 	async fn prepare_arkoor(
 		&self,
 		srv: &Server,

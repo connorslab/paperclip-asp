@@ -269,7 +269,7 @@ impl ClnXpayClient {
 /// The CLN gRPC adapter exposes these local RPC errors as Unknown. Fail
 /// closed on any other encoding, transport failure, or routing failure.
 fn is_local_xpay_rejection(error: &tonic::Status) -> bool {
-	error.code() == tonic::Code::Unknown && [206, 207].iter().any(|code|
+	error.code() == tonic::Code::Unknown && [205, 206, 207].iter().any(|code|
 		error.message().starts_with(&format!("Error calling method Xpay: RpcError {{ code: Some({code}),")))
 }
 
@@ -278,7 +278,7 @@ mod rejection_tests {
 	use super::*;
 	#[test]
 	fn local_rejection_never_accepts_transport_uncertainty() {
-		for code in [206, 207] {
+		for code in [205, 206, 207] {
 			let text = format!("Error calling method Xpay: RpcError {{ code: Some({code}), message: failure }}");
 			assert!(is_local_xpay_rejection(&tonic::Status::unknown(&text)));
 			assert!(!is_local_xpay_rejection(&tonic::Status::deadline_exceeded(&text)));
