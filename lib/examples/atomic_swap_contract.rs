@@ -17,6 +17,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 	if args.len() < 4 { return Err("usage: address HEIGHT source|destination | spend HEIGHT TXID VOUT SATS DEST MODE LOCKTIME PUBLIC-REGTEST-KEYS source|destination".into()); }
 	let deadline: u32 = args[2].parse()?;
 	if deadline == 0 || deadline >= 500_000_000 { return Err("height required".into()); }
+	let csv: u16 = args.get(if args[1] == "address" { 4 } else { 11 })
+		.map(|s| s.parse()).transpose()?.unwrap_or(0);
 	let side = if args[1] == "address" { args.get(3) } else { args.get(10) }.ok_or("missing side")?;
 	let (claim_id, refund_id) = match side.as_str() {
 		"source" => (2, 1), // Alice -> provider
@@ -27,11 +29,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let refund = Keypair::from_secret_key(&SECP, &SecretKey::from_slice(&[refund_id; 32])?);
 	let secret = [42u8; 32];
 	let hash = sha256::Hash::hash(&secret);
-	let success_script = Builder::new()
+	let delayed = || if csv == 0 { Builder::new() } else {
+		Builder::new().push_int(csv.into()).push_opcode(OP_CSV).push_opcode(OP_DROP)
+	};
+	let success_script = delayed()
 		.push_opcode(OP_SIZE).push_int(32).push_opcode(OP_EQUALVERIFY)
 		.push_opcode(OP_SHA256).push_slice(hash.to_byte_array()).push_opcode(OP_EQUALVERIFY)
 		.push_x_only_key(&claim.x_only_public_key().0).push_opcode(OP_CHECKSIG).into_script();
-	let refund_script = Builder::new().push_int(deadline.into()).push_opcode(OP_CLTV).push_opcode(OP_DROP)
+	let refund_script = delayed().push_int(deadline.into()).push_opcode(OP_CLTV).push_opcode(OP_DROP)
 		.push_x_only_key(&refund.x_only_public_key().0).push_opcode(OP_CHECKSIG)
 		.into_script();
 	// BIP341 NUMS internal key: no known key-path secret.
@@ -41,7 +46,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		.finalize(&SECP, nums).map_err(|_| "taproot tree")?;
 	let address = Address::p2tr_tweaked(tree.output_key(), Network::Regtest);
 	if args[1] == "address" { println!("{address}"); return Ok(()); }
-	if args[1] != "spend" || args.len() != 11 { return Err("invalid fixture command".into()); }
+	if args[1] != "spend" || !(11..=12).contains(&args.len()) { return Err("invalid fixture command".into()); }
 	let amount: u64 = args[5].parse()?;
 	let output = Address::from_str(&args[6])?.require_network(Network::Regtest)?;
 	let mode = args[7].as_str();
@@ -54,7 +59,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let mut tx = Transaction {
 		version: transaction::Version::TWO, lock_time: absolute::LockTime::from_height(locktime)?,
 		input: vec![TxIn { previous_output: OutPoint { txid: args[3].parse()?, vout: args[4].parse()? },
-			script_sig: ScriptBuf::new(), sequence: Sequence::ENABLE_LOCKTIME_NO_RBF, witness: Witness::new() }],
+			script_sig: ScriptBuf::new(), sequence: if csv == 0 { Sequence::ENABLE_LOCKTIME_NO_RBF }
+				else { Sequence::from_height(csv) }, witness: Witness::new() }],
 		output: vec![TxOut { value: Amount::from_sat(amount.checked_sub(1000).ok_or("amount too small")?),
 			script_pubkey: output.script_pubkey() }],
 	};

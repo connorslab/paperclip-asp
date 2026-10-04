@@ -28,10 +28,31 @@ success and refund spends, double-spend rejection, a late success spend, and two
 linked success spends. The fixed 1,000-sat transaction fee is test provisioning,
 not an optimized recovery allocation or a proposed customer fee.
 
-These are directly funded on-chain UTXOs. The test does not include Ark ancestry,
-checkpoint revocation, server failure, CSV recovery delays, or concurrent chain
+The fixture also supports an optional CSV block delay on both spend leaves.
+A synthetic root -> parent -> claim chain tests accumulated confirmation delays.
+The runner verifies rejection before the parent and child become mature, saves
+the signed child, restarts the isolated node, and completes recovery with that
+same child. It also invalidates and reconsiders one block to verify that maturity
+is checked again after a reorg. These tests pass with a three-block CSV delay;
+three blocks is a test parameter, not an approved production recovery margin.
+
+These are directly funded on-chain UTXOs and synthetic ancestry. The test does not
+include actual Ark ancestry, checkpoint revocation, server failure, or concurrent chain
 races. The secret is deterministic and public in this fixture. This demonstrates
 script enforcement and paired claims, not a secure end-to-end Ark swap.
+
+## Production release gates
+
+- Define a versioned Ark swap policy and validate its complete ancestry.
+- Prove timeout margins for both success/refund graphs, including late disclosure.
+- Verify each participant's independent recovery under server failure and reorgs.
+- Add authenticated peer/recipient bindings and immutable signed quotes.
+- Reserve inventory durably and reconcile unknown outcomes without duplicate debit.
+- Connect two independent test Ark servers and wallets; measure actual costs.
+- Keep old VTXO policies and wallet APIs functional and retain rollback procedures.
+
+The current fixtures do not meet these gates. No production swap capability is
+advertised or enabled by this branch.
 
 ## Run the laboratory model
 

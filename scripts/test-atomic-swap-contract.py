@@ -123,7 +123,55 @@ def main():
                     rpc('generatetoaddress', 1, miner)
                     assert rpc('gettxout', txid, 0)['confirmations'] == 1
                 checks['two_linked_contracts_confirmed'] = True
-                print(json.dumps({'scope': 'standalone HTLC leaf, not Ark recovery', 'checks': checks}, indent=2))
+                # Synthetic delayed ancestry: root -> parent -> claim. This
+                # models delay accumulation, NOT the real Ark checkpoint graph.
+                csv = 3
+                expiry = rpc('getblockcount') + 30
+                delayed_address = tool('address', expiry, 'source', csv)
+                root_txid = rpc('sendtoaddress', delayed_address, 0.0006, wallet=True)
+                root_tx = rpc('decoderawtransaction', rpc('gettransaction', root_txid, wallet=True)['hex'])
+                root_vout = next(x['n'] for x in root_tx['vout'] if x['scriptPubKey'].get('address') == delayed_address)
+                rpc('generatetoaddress', 1, miner)
+                parent = tool('spend', expiry, root_txid, root_vout, 60_000,
+                              delayed_address, 'success', 0, 'PUBLIC-REGTEST-KEYS', 'source', csv)
+                checks['immature_parent'] = check(parent, False).get('reject-reason')
+                rpc('generatetoaddress', csv-1, miner)
+                check(parent, True)
+                parent_txid = rpc('sendrawtransaction', parent)
+                child = tool('spend', expiry, parent_txid, 0, 59_000,
+                             destination, 'success', 0, 'PUBLIC-REGTEST-KEYS', 'source', csv)
+                checks['unconfirmed_ancestor'] = check(child, False).get('reject-reason')
+                rpc('generatetoaddress', 1, miner)
+                checks['immature_child'] = check(child, False).get('reject-reason')
+                # Persist the exact signed recovery transaction, restart the
+                # isolated node, then recover without constructing another spend.
+                saved = root / 'recovery-child.hex'
+                saved.write_text(child)
+                restart_command = process.args
+                rpc('stop')
+                process.wait(timeout=20)
+                process = subprocess.Popen(restart_command, stdout=log, stderr=log)
+                for _ in range(100):
+                    if process.poll() is not None: raise RuntimeError('restart failed')
+                    try:
+                        if rpc('getblockchaininfo')['chain'] == 'regtest': break
+                    except (OSError, ValueError): pass
+                    time.sleep(0.1)
+                else: raise RuntimeError('restart timed out')
+                child = saved.read_text()
+                checks['restart_retains_immaturity'] = check(child, False).get('reject-reason')
+                blocks = rpc('generatetoaddress', csv-1, miner)
+                check(child, True)
+                # A one-block reorg can make a previously acceptable exit immature.
+                rpc('invalidateblock', blocks[-1])
+                checks['reorg_maturity_rechecked'] = check(child, False).get('reject-reason')
+                rpc('reconsiderblock', blocks[-1])
+                check(child, True)
+                child_txid = rpc('sendrawtransaction', child)
+                rpc('generatetoaddress', 1, miner)
+                assert rpc('gettxout', child_txid, 0)['confirmations'] == 1
+                checks['delayed_ancestry_claim_confirmed'] = True
+                print(json.dumps({'scope': 'HTLC leaves and synthetic delayed ancestry, not Ark recovery', 'checks': checks}, indent=2))
             except Exception:
                 print((root / 'node.log').read_text()[-4000:])
                 raise
