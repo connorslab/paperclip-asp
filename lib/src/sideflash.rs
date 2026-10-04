@@ -1,14 +1,18 @@
 //! Experimental Sideflash address authentication. Does not execute payments.
 //! Version 0 is a development profile, not a stable interoperability promise.
 
+use std::io::Cursor;
 use bitcoin::bech32::{self, Bech32m, Hrp};
 use bitcoin::hashes::{sha256, Hash};
 use bitcoin::secp256k1::{schnorr::Signature, Keypair, Message, PublicKey};
 use lightning::offers::offer::Offer;
 use crate::{Address, VtxoPolicy, SECP};
+use crate::encode::ReadExt;
 
-pub const MAX_PAYLOAD: usize = 2048;
-pub const MAX_TEXT: usize = 4096;
+// Bech32m's code length is 1023 symbols. With "sfl1" and six checksum
+// symbols, at most 633 full payload bytes fit in this profile.
+pub const MAX_PAYLOAD: usize = 633;
+pub const MAX_TEXT: usize = 1023;
 
 #[derive(Debug, thiserror::Error)]
 #[error("invalid Sideflash address: {0}")]
@@ -77,13 +81,14 @@ fn message(domain: &[u8], body: &[u8]) -> Message {
 
 impl Binding {
 	fn body(&self, recipient: Option<&Signature>, server: Option<&Signature>) -> Result<Vec<u8>, Error> {
-		let address = self.address.to_string();
+		let mut address = vec![u8::from(self.address.is_testnet()), 1];
+		self.address.encode_payload(&mut address).map_err(|_| Error("Ark encoding"))?;
 		if address.len() > 1024 || self.offer.len() > 1024 { return Err(Error("field size")); }
 		let mut out = Vec::new();
 		head(&mut out, 5, if server.is_some() { 12 } else if recipient.is_some() { 11 } else { 10 });
 		for (k, n) in [(0, 0), (1, 0)] { head(&mut out, 0, k); head(&mut out, 0, n); }
 		for (k, value) in [(2, self.chain.genesis.as_slice()), (3, self.chain.fork_id.as_slice()),
-			(4, self.server.serialize().as_slice()), (5, address.as_bytes()), (6, self.offer.as_slice())] {
+			(4, self.server.serialize().as_slice()), (5, address.as_slice()), (6, self.offer.as_slice())] {
 			head(&mut out, 0, k); bytes(&mut out, value);
 		}
 		for (k, n) in [(7, self.revision), (8, self.not_before), (9, self.expires)] {
@@ -156,8 +161,21 @@ impl SideflashAddress {
 		r.key(2)?; let genesis = r.blob()?.try_into().map_err(|_| Error("genesis"))?;
 		r.key(3)?; let fork_id = r.blob()?.try_into().map_err(|_| Error("fork id"))?;
 		r.key(4)?; let server = PublicKey::from_slice(r.blob()?).map_err(|_| Error("server key"))?;
-		r.key(5)?; let address = std::str::from_utf8(r.blob()?).map_err(|_| Error("address text"))?
-			.parse().map_err(|_| Error("Ark address"))?;
+		r.key(5)?; let native = r.blob()?;
+		let (flags, payload) = native.split_at_checked(2).ok_or(Error("Ark header"))?;
+		if flags[0] > 1 || flags[1] != 1 { return Err(Error("Ark profile")); }
+		// Bound native length-prefixed fields before the general Ark decoder
+		// allocates from their lengths. The remaining envelope is the hard bound.
+		let mut native_fields = payload.get(4..).ok_or(Error("Ark identity"))?;
+		while !native_fields.is_empty() {
+			let mut cursor = Cursor::new(native_fields);
+			let size = usize::try_from(cursor.read_compact_size().map_err(|_| Error("Ark field length"))?)
+				.map_err(|_| Error("Ark field length"))?;
+			let offset = usize::try_from(cursor.position()).map_err(|_| Error("Ark field offset"))?;
+			let end = offset.checked_add(size).ok_or(Error("Ark field overflow"))?;
+			native_fields = native_fields.get(end..).ok_or(Error("Ark field truncated"))?;
+		}
+		let address = Address::decode_payload(flags[0] == 1, payload.iter().copied()).map_err(|_| Error("Ark address"))?;
 		r.key(6)?; let offer = r.blob()?.to_vec();
 		r.key(7)?; let revision = r.number(0)?;
 		r.key(8)?; let not_before = r.number(0)?;
@@ -269,6 +287,23 @@ mod tests {
 		for now in [99, 200, u64::MAX] { assert!(h.route(h.binding.chain, key(2).public_key(), key(2).public_key(), now).is_err()); }
 		assert!(h.route(h.binding.chain, key(3).public_key(), key(2).public_key(), 100).is_err());
 		assert!(h.binding.authorize(&key(3), 100).is_err());
+	}
+	#[test]
+	fn sideflash_shared_vectors_and_network_separation() {
+		let fixture: serde_json::Value = serde_json::from_str(include_str!("../../tests/vectors/sideflash-v0.json")).unwrap();
+		for vector in fixture["vectors"].as_array().unwrap() {
+			let network = if vector["network"] == "mainnet" { bitcoin::Network::Bitcoin } else { bitcoin::Network::Regtest };
+			let text = vector["address"].as_str().unwrap();
+			let decoded = SideflashAddress::decode(text).unwrap();
+			assert_eq!(decoded.encode().unwrap(), text);
+			let server = vector["server_key"].as_str().unwrap().parse().unwrap();
+			assert_eq!(decoded.route(ChainContext::xbt(network).unwrap(), server, server, 100).unwrap(),
+				Route::NativeArk(vector["native_address"].as_str().unwrap().to_owned()));
+			let other = if network == bitcoin::Network::Bitcoin { bitcoin::Network::Regtest } else { bitcoin::Network::Bitcoin };
+			assert!(decoded.verified_offer(ChainContext::xbt(other).unwrap(), server, 100).is_err());
+		}
+		assert!(ChainContext::xbt(bitcoin::Network::Signet).is_err());
+		assert!(ChainContext::xbt(bitcoin::Network::Testnet).is_err());
 	}
 	#[test]
 	fn sideflash_lightning_only_rejects_invalid_binding() {

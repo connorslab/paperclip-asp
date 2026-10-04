@@ -15,7 +15,7 @@ payment destinations. The library does not execute payments or enable a server A
 
 Use the `sfl` human-readable prefix and Bech32m checksum. Writers produce lowercase
 text. Readers accept uppercase but reject mixed case. The `1` is a separator.
-Limit input to 4096 ASCII characters and decoded payloads to 2048 bytes. This
+Limit input to 1023 ASCII characters and decoded payloads to 633 bytes. This
 profile deliberately exceeds the original Bech32 address length limit.
 
 The payload is a deterministic CBOR map. Require ascending unsigned integer keys,
@@ -29,7 +29,7 @@ Reject trailing bytes. Individual byte strings have a 1024-byte limit.
 | 2 | 32-byte string | Chain genesis hash in Lightning chain-hash byte order |
 | 3 | 32-byte string | Fork discriminator from the configured chain profile |
 | 4 | 33-byte string | Compressed destination server public key |
-| 5 | byte string | UTF-8 canonical lowercase native Ark address |
+| 5 | byte string | Native address: network flag byte, version byte 1, canonical Ark payload |
 | 6 | byte string | Exact decoded BOLT12 offer TLV bytes |
 | 7 | unsigned integer | Mapping revision |
 | 8 | unsigned integer | Inclusive validity start, Unix seconds |
@@ -39,8 +39,10 @@ Reject trailing bytes. Individual byte strings have a 1024-byte limit.
 
 The first profile supports native pubkey policies only. Delegated signing keys,
 resolver hints and other receiving policies require a subsequent profile. The
-native address is canonical text bytes in this development version, rather than
-a new interpretation of its internal binary format.
+native address field starts with a network flag (0 for mainnet, 1 for regtest),
+then a policy-address version byte (1), then the canonical native address payload
+without its HRP, five-bit version or checksum. Re-encoding must reproduce the
+exact field. This replaces the initial unreleased text-byte prototype.
 
 ## Signatures
 

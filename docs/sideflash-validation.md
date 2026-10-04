@@ -17,3 +17,11 @@ recipients and offers, validity boundaries, malformed CBOR and truncations.
 
 This evidence establishes only an experimental codec and binding verifier.
 It does not establish server delivery, recovery safety or monetary interoperability.
+
+## Vector and size follow-up
+
+Five Sideflash tests and workspace checks pass after binary native-address
+encoding and a 633-byte / 1023-character limit. Frozen mainnet and regtest
+fixtures also pass a Python CBOR/BIP340 checker. Synthetic QR image decoding
+passes at M and Q correction levels in lowercase and uppercase. Actual camera
+scanning, independent human review and two-server delivery remain unverified.
