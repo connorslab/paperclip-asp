@@ -54,6 +54,14 @@ in {
 			pkgs.gcc.cc.lib
 			pkgs.openssl
 			pkgs.protobuf
+			# The library's transaction-validation tests build rust-bitcoinkernel.
+			pkgs.cmake
+			pkgs.boost.dev
+			pkgs.curl
+			pkgs.git
+			pkgs.python3
+			postgresql
+			pkgs.cargo-nextest
 
 			# For generating clients
 			openapiGeneratorCli

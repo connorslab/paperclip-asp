@@ -22,7 +22,7 @@ use tracing::{error, info, trace, warn};
 use ark::{Vtxo, VtxoId, VtxoPolicy, VtxoRequest, ServerVtxo};
 use ark::arkoor::ArkoorDestination;
 use ark::vtxo::Full;
-use ark::arkoor::package::{ArkoorPackageCosignRequest, ArkoorPackageCosignResponse};
+use ark::arkoor::package::{ArkoorPackageBuilder, ArkoorPackageCosignRequest, ArkoorPackageCosignResponse};
 use ark::attestations::LightningReceiveAttestation;
 use ark::fees::{validate_and_subtract_fee, VtxoFeeInfo};
 use ark::integration::{TokenStatus, TokenType};
@@ -151,11 +151,17 @@ fn validate_receive_claim(
 }
 
 impl Server {
-	#[tracing::instrument(skip(self, request))]
+	#[tracing::instrument(skip(self, request, invoice))]
 	pub async fn request_lightning_pay_htlc_cosign(
 		&self,
 		request: ArkoorPackageCosignRequest<VtxoId>,
+		invoice: Option<Invoice>,
+		payment_amount: Option<Amount>,
 	) -> anyhow::Result<ArkoorPackageCosignResponse> {
+		if invoice.is_some() != payment_amount.is_some() {
+			return badarg!("provide both invoice and amount for Lightning preflight, or neither for legacy requests");
+		}
+		let inline_reimbursement = invoice.is_some();
 		let input_vtxo_ids = request.inputs().cloned().collect::<Vec<VtxoId>>();
 		let input_vtxos = self.db.read(async |t| t.get_user_vtxos_by_id(&input_vtxo_ids).await).await?;
 
@@ -192,28 +198,9 @@ impl Server {
 			return badarg!("payment hash collides with an existing unlock hash");
 		}
 
-		// Bail early if this invoice was already paid to avoid setting up HTLCs
-		// just to have them revoked some time later.
-		if self.htlc_settler.is_settled(payment_hash).await?.is_some() {
-			return badarg!("invoice has already been paid");
-		}
-
 		// Verify that the proposed expiry makes sense for us
 		let tip = self.sync_manager.chain_tip().height;
 		let expiry = tip + self.config.htlc_send_expiry_delta;
-		if requested_policy.htlc_expiry < expiry.saturating_sub(BlockDelta::new(1)) {
-			return badarg!(
-				"requested expiry is too low. our tip is {tip}. \
-				sync your node and try again",
-			);
-		}
-
-		if self.db.read(async |t| t.get_open_lightning_payment_attempt_by_payment_hash(
-			payment_hash,
-		).await).await?.is_some()
-		{
-			return badarg!("payment already in progress for this invoice");
-		}
 
 		let validation = ArkoorCosignRequestValidationParams {
 			allow_lightning_send: true,
@@ -228,15 +215,62 @@ impl Server {
 		// We have to do this at the end to ensure idempotency
 		let chain_tip = self.sync_manager.chain_tip().height;
 		let spend_map = builder.spend_info().collect::<HashMap<VtxoId, bitcoin::Txid>>();
-		for vtxo in input_vtxos {
+		// A lost cosign response must remain recoverable after invoice expiry.
+		// Only the exact already-committed spend may bypass a fresh preflight.
+		let replay = input_vtxos.iter().all(|v| v.oor_spent_txid.is_some()
+			&& v.oor_spent_txid.as_ref() == spend_map.get(&v.vtxo_id));
+		for vtxo in &input_vtxos {
 			let spending_txid = spend_map.get(&vtxo.vtxo_id)
 				.context("missing spend info for input vtxo")?;
 			vtxo.check_spendable_for_oor(chain_tip, *spending_txid)?;
 		}
+		if !replay {
+			if self.htlc_settler.is_settled(payment_hash).await?.is_some() {
+				return badarg!("invoice has already been paid");
+			}
+			if self.db.read(async |t| t.get_open_lightning_payment_attempt_by_payment_hash(
+				payment_hash,
+			).await).await?.is_some() {
+				return badarg!("payment already in progress for this invoice");
+			}
+			if requested_policy.htlc_expiry < expiry.saturating_sub(BlockDelta::new(1)) {
+				return badarg!("requested expiry is too low; sync your node and try again");
+			}
+			if let Some(invoice) = invoice {
+				let amount = payment_amount.badarg("payment amount is required for Lightning preflight")?;
+				invoice.require_xbt().badarg("wrong invoice network identity")?;
+				if invoice.network() != self.config.network { return badarg!("invoice is for another network"); }
+				invoice.check_signature().badarg("invalid invoice signature")?;
+				if invoice.payment_hash() != payment_hash || amount == Amount::ZERO {
+					return badarg!("invoice does not match the requested HTLC");
+				}
+				invoice.get_payment_amount(Some(amount)).badarg("invalid invoice amount")?;
+				let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+				if !invoice.has_send_lifetime(now) {
+					return badarg!("invoice expired or expires within 30 seconds; request a fresh invoice");
+				}
+				let fee = self.config.fees.lightning_send.calculate(amount, input_vtxos.iter()
+					.map(|v| VtxoFeeInfo::from_vtxo_and_tip(&v.vtxo, chain_tip)))
+					.context("fee overflow")?;
+				let extra = htlc_amount.checked_sub(amount.checked_add(fee).context("amount overflow")?)
+					.badarg("HTLC does not cover payment and fee")?;
+				let routing_fee = fee.to_sat().checked_mul(self.config.ln_max_fee_ppm as u64)
+					.map(|n| Amount::from_sat(n / 1_000_000)).and_then(|n| n.checked_add(extra))
+					.context("routing fee overflow")?;
+				if let Some(sub) = self.db.read(async |t|
+					t.get_htlc_subscription_by_payment_hash(payment_hash).await
+				).await? {
+					validate_intra_ark_payment(&sub, &invoice, amount).badarg("invalid internal payment")?;
+				} else {
+					self.lightning_manager.preflight_payment(&invoice, amount, routing_fee,
+						requested_policy.htlc_expiry).await.badarg("Lightning route preflight failed; no HTLC signed")?;
+				}
+			}
+		}
 
 		slog!(LightningPayHtlcsRequested, payment_hash, expiry);
 
-		let (builder, _) = self.cosign_oor_with_builder(builder).await?;
+		let (builder, _) = self.cosign_oor_with_delivery(builder, inline_reimbursement).await?;
 		Ok(builder.cosign_response())
 	}
 
@@ -251,6 +285,9 @@ impl Server {
 	) -> anyhow::Result<()> {
 		//TODO(stevenroose) validate vtxo generally (based on input)
 		check_max_amount("lightning send", payment_amount, self.config.max_ln_send_amount)?;
+		invoice.require_xbt().badarg("wrong invoice network identity")?;
+		invoice.check_signature().badarg("invalid invoice signature")?;
+		if invoice.network() != self.config.network { return badarg!("invoice is for another network"); }
 
 		let payment_hash = invoice.payment_hash();
 
@@ -296,6 +333,22 @@ impl Server {
 			}
 			min_expiry_height = cmp::min(min_expiry_height, htlc.htlc_expiry);
 			htlc_vtxo_sum += htlc_vtxo.amount();
+		}
+
+		// Legacy wallets provide their existing inbox at initiation, after HTLC
+		// signing. Delivery remains bound to the authorized revocation key.
+		if let Some(mailbox) = mailbox_id {
+			self.db.write(async |t| t.record_lightning_credit_mailbox(&htlc_vtxo_ids, mailbox).await).await?;
+		}
+
+		// Verify against the invoice amount if applicable, disallowing underpayments.
+		let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+		if invoice.expired_at(now + Duration::from_secs(1)) {
+			self.db.write(async |t| {
+				t.ensure_not_settled(payment_hash).await?;
+				t.approve_unstarted_expired_payment(&htlc_vtxo_ids).await
+			}).await?;
+			return badarg!("invoice expired before dispatch; recover the HTLCs and request a fresh invoice");
 		}
 
 		// Verify against the invoice amount if applicable, disallowing underpayments.
@@ -395,7 +448,7 @@ impl Server {
 	pub async fn revoke_lightning_pay_htlcs(
 		&self,
 		cosign_request: ArkoorPackageCosignRequest<VtxoId>,
-	) -> anyhow::Result<ArkoorPackageCosignResponse> {
+	) -> anyhow::Result<(ArkoorPackageCosignResponse, Vec<Vtxo<Full>>, bool)> {
 		let tip = self.chain_tip().height as BlockHeight;
 		let db = self.db.clone();
 
@@ -407,8 +460,8 @@ impl Server {
 		}
 
 		let htlc_vtxo_ids = cosign_request.inputs().cloned().collect::<Vec<VtxoId>>();
-		let htlc_vtxos = self.db.read(async |t| t.get_user_vtxos_by_id(&htlc_vtxo_ids).await).await?.into_iter()
-			.map(|v| v.vtxo).collect::<Vec<_>>();
+		let htlc_states = self.db.read(async |t| t.get_user_vtxos_by_id(&htlc_vtxo_ids).await).await?;
+		let htlc_vtxos = htlc_states.iter().map(|v| v.vtxo.clone()).collect::<Vec<_>>();
 
 		let input_policy = htlc_vtxos.iter()
 			.all_same(|v| v.policy())
@@ -425,11 +478,24 @@ impl Server {
 			htlc_vtxo_ids: htlc_vtxo_ids.clone(),
 		);
 
+		let cosign_request = cosign_request.set_vtxos(htlc_vtxos)?;
+		// An exact committed refund remains retrievable after a lost response,
+		// a later attempt for the same invoice, or expiry of the original input.
+		// The builder verifies the user's attestation before comparing txids.
+		let replay_builder = ArkoorPackageBuilder::from_cosign_request(cosign_request.clone())
+			.map_err(|(_, e)| anyhow::anyhow!(e)).badarg("invalid revocation request")?;
+		let spends = replay_builder.spend_info().collect::<HashMap<_, _>>();
+		let replay = !htlc_states.is_empty() && htlc_states.iter().all(|v|
+			v.oor_spent_txid.is_some() && v.oor_spent_txid.as_ref() == spends.get(&v.vtxo_id));
+		if replay {
+			let response = replay_builder.server_cosign(self.server_key.leak_ref())?.cosign_response();
+			let (credits, pending) = self.lightning_failure_reimbursements(&htlc_vtxo_ids).await;
+			return Ok((response, credits, pending));
+		}
+
 		if self.htlc_settler.is_settled(payment_hash).await?.is_some() {
 			return badarg!("invoice has already been paid");
 		}
-
-		let cosign_request = cosign_request.set_vtxos(htlc_vtxos)?;
 
 		let validation = ArkoorCosignRequestValidationParams {
 			allow_lightning_send: false,
@@ -500,6 +566,13 @@ impl Server {
 			}
 
 			t.execute_vtxo_tree_update(update).await?;
+			for part in &builder.builders {
+				let outputs = part.build_unsigned_vtxos().collect::<Vec<_>>();
+				ensure!(outputs.len() == 1, "revocation must return one output per HTLC");
+				let cost = part.input().amount().checked_sub(outputs[0].amount())
+					.context("refund cost underflow")?;
+				t.record_lightning_refund_cost(part.input().id(), outputs[0].id(), cost).await?;
+			}
 
 			// Committing the refund spend concludes these htlcs: the server
 			// can no longer collect them against the preimage.
@@ -515,9 +588,45 @@ impl Server {
 		let builder = builder.server_cosign(self.server_key.leak_ref())
 			.context("Failed to sign")?;
 
-		slog!(LightningPayHtlcsRevoked, payment_hash, htlc_vtxo_ids, new_vtxo_ids);
+		slog!(LightningPayHtlcsRevoked, payment_hash, htlc_vtxo_ids: htlc_vtxo_ids.clone(), new_vtxo_ids);
 
-		Ok(builder.cosign_response())
+		let (reimbursement, pending) = self.lightning_failure_reimbursements(&htlc_vtxo_ids).await;
+		Ok((builder.cosign_response(), reimbursement, pending))
+	}
+
+	async fn lightning_failure_reimbursements(&self, htlc_vtxo_ids: &[VtxoId]) -> (Vec<Vtxo<Full>>, bool) {
+		let mut reimbursement = Vec::new();
+		let mut pending = false;
+		for id in htlc_vtxo_ids {
+			let result: anyhow::Result<Vec<Vtxo<Full>>> = async {
+				let credit = self.db.read(async |t| t.lightning_failure_credit(*id).await).await?;
+				match credit {
+					Some(credit) => {
+						let outputs = self.vtxopool.reimburse(self, &credit).await?;
+						if credit.inline_reimbursement { Ok(outputs) } else { Ok(Vec::new()) }
+					},
+					None => Ok(Vec::new()),
+				}
+			}.await;
+			match result {
+				Ok(vtxos) => reimbursement.extend(vtxos),
+				Err(e) => {
+					pending = true;
+					warn!("Recovery reimbursement for {id} remains pending: {e:#}");
+				}
+			}
+		}
+		(reimbursement, pending)
+	}
+
+	pub(crate) async fn retry_legacy_lightning_credits(&self) -> anyhow::Result<()> {
+		let ids = self.db.read(async |t| t.pending_legacy_lightning_credits().await).await?;
+		for id in ids {
+			// A large or temporarily unpayable credit must not starve later users.
+			self.db.write(async |t| t.mark_lightning_credit_retry(id).await).await?;
+			let _ = self.lightning_failure_reimbursements(&[id]).await;
+		}
+		Ok(())
 	}
 
 	#[tracing::instrument(skip(self))]

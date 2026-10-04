@@ -328,7 +328,10 @@ impl rpc::server::ArkService for Server {
 		let cosign_requests = ArkoorPackageCosignRequest::try_from(req.clone())
 			.context("Failed to parse request")?;
 
-		let resp = self.request_lightning_pay_htlc_cosign(cosign_requests)
+		let invoice = req.invoice.map(|s| s.parse::<Invoice>()).transpose()
+			.badarg("invalid Lightning invoice")?;
+		let amount = req.payment_amount_sat.map(Amount::from_sat);
+		let resp = self.request_lightning_pay_htlc_cosign(cosign_requests, invoice, amount)
 			.await.context("error making payment")?;
 
 		Ok(tonic::Response::new(resp.into()))
@@ -387,10 +390,13 @@ impl rpc::server::ArkService for Server {
 		let cosign_requests = ArkoorPackageCosignRequest::try_from(req.into_inner())
 			.context("Failed to parse request")?;
 
-		let cosign_resp = self.revoke_lightning_pay_htlcs(cosign_requests).await
+		let (cosign_resp, reimbursement, pending) = self.revoke_lightning_pay_htlcs(cosign_requests).await
 			.to_status()?;
 
-		Ok(tonic::Response::new(cosign_resp.into()))
+		let mut response = protos::ArkoorPackageCosignResponse::from(cosign_resp);
+		response.reimbursement_vtxos = reimbursement.iter().map(|v| v.serialize()).collect();
+		response.reimbursement_pending = pending;
+		Ok(tonic::Response::new(response))
 	}
 
 	#[tracing::instrument(skip(self, req))]

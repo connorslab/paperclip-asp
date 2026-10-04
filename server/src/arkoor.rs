@@ -129,6 +129,12 @@ impl Server {
 		&self,
 		builder: ArkoorPackageBuilder<ServerCanCosign>,
 	) -> anyhow::Result<(ArkoorPackageBuilder<ServerSigned>, u64)> {
+		self.cosign_oor_with_delivery(builder, true).await
+	}
+
+	pub(crate) async fn cosign_oor_with_delivery(
+		&self, builder: ArkoorPackageBuilder<ServerCanCosign>, inline_reimbursement: bool,
+	) -> anyhow::Result<(ArkoorPackageBuilder<ServerSigned>, u64)> {
 		let vtxo_guard = self.vtxos_in_flux.try_lock(builder.input_ids()).map_err(|e| {
 			slog!(ArkoorInputAlreadyInFlux, vtxo: e.id);
 			badarg_err!("some VTXO is already locked by another process: {}", e.id)
@@ -155,6 +161,22 @@ impl Server {
 			.mark_vtxos_oor_spent(builder.input_spend_info());
 		let inserted = self.db.write(async |t| {
 			let inserted = t.execute_vtxo_tree_update(update).await?;
+			for part in &builder.builders {
+				let htlcs = part.build_unsigned_vtxos().filter(|v|
+					matches!(v.policy(), VtxoPolicy::ServerHtlcSend(_))).collect::<Vec<_>>();
+				if htlcs.is_empty() { continue; }
+				ensure!(htlcs.len() == 1, "one outgoing HTLC per input is required");
+				let outputs = part.all_outputs().try_fold(bitcoin::Amount::ZERO, |n, v|
+					n.checked_add(v.total_amount)).context("output sum overflow")?;
+				let reserve = part.input().amount().checked_sub(outputs).context("reserve underflow")?;
+				let hash = htlcs[0].policy().as_server_htlc_send().context("HTLC policy missing")?.payment_hash;
+				t.record_lightning_setup_cost(htlcs[0].id(), hash, reserve).await?;
+				// Only a fresh HTLC chooses delivery. Replays cannot reroute a credit.
+				if inserted > 0 && !inline_reimbursement {
+					t.execute("UPDATE lightning_failure_credit SET inline_reimbursement=FALSE WHERE htlc_vtxo_id=$1",
+						&[&htlcs[0].id().to_string()]).await?;
+				}
+			}
 			htlc_vtxo::set_htlc_vtxo_resolutions(
 				&t, &claimed_htlc_recvs, HtlcResolution::Fulfilled,
 			).await?;
@@ -243,4 +265,3 @@ impl Server {
 		Ok(builder.cosign_response())
 	}
 }
-
