@@ -56,6 +56,13 @@ p.write_text(t.replace(old, 'format!("127.0.0.1:{}", public_port)'))
 p=Path('testing/src/bark.rs')
 t=p.read_text(); assert '.strip_prefix("bark ")' in t
 p.write_text(t.replace('.strip_prefix("bark ")', '.strip_prefix("paperclip-wallet ")').replace('match cp {', 'match cp { Cp::LightningOffer(_) => "ln_offer.saved".to_string(),'))
+# Funded version-2 exits broadcast their parents without a CPFP child. The
+# upstream helper must mine that state before waiting for the user's CSV delay.
+p=Path('testing/src/exit.rs')
+t=p.read_text()
+old='ExitTxStatus::AwaitingInputConfirmation { .. } | ExitTxStatus::AwaitingConfirmation { .. }'
+assert old in t
+p.write_text(t.replace(old, old+' | ExitTxStatus::AwaitingParentConfirmation'))
 p=Path('testing/xbt-bitcoind')
 t=p.read_text(); assert '-mempooltruc=enforce -subdustfeepenalty=0' in t
 p.write_text(t.replace('-mempooltruc=enforce -subdustfeepenalty=0', '-mempooltruc=reject'))

@@ -43,15 +43,15 @@ async fn xbt_lifecycle() {
 	let rejected = ctx.bitcoind().sync_client().test_mempool_accept(&[&legacy]).unwrap();
 	assert!(!rejected[0].allowed);
 	alice.send_oor(&bob.address().await, sat(100_000)).await;
-	assert_eq!(alice.spendable_balance().await, sat(392_000));
+	assert_eq!(alice.spendable_balance().await, sat(394_010));
 	assert_eq!(bob.spendable_balance().await, sat(100_000));
 	assert!(alice.try_send_oor(&carol.address().await, sat(329), true).await.is_err());
-	assert_eq!(alice.spendable_balance().await, sat(392_000));
+	assert_eq!(alice.spendable_balance().await, sat(394_010));
 	// Two users now share ancestors in the same freshly funded round.
 	ctx.refresh_all(&srv, &[&alice, &bob]).await;
 	ctx.generate_blocks(ROUND_CONFIRMATIONS).await;
 	bob.send_oor(&carol.address().await, sat(20_000)).await;
-	assert_eq!(bob.spendable_balance().await, sat(74_000));
+	assert_eq!(bob.spendable_balance().await, sat(76_010));
 	assert_eq!(carol.spendable_balance().await, sat(20_000));
 	// Cooperative withdrawal also remains available.
 	bob.offboard_all(&bob.get_onchain_address().await).await;
@@ -96,7 +96,7 @@ async fn xbt_lifecycle() {
 	alice.claim_all_exits(alice.get_onchain_address().await).await;
 	ctx.generate_blocks(1).await;
 	assert!(alice.onchain_balance().await > before + sat(380_000));
-	assert!(alice.onchain_balance().await < before + sat(392_000));
+	assert!(alice.onchain_balance().await < before + sat(394_010));
 }
 
 fn copy_wallet(source: &std::path::Path, destination: &std::path::Path) {
@@ -111,6 +111,31 @@ fn copy_wallet(source: &std::path::Path, destination: &std::path::Path) {
 			std::fs::copy(entry.path(), target).unwrap();
 		}
 	}
+}
+
+#[tokio::test]
+async fn xbt_lifecycle_small_anchor_legacy_recipient() {
+	let old_exec = std::env::var("PAPERCLIP_OLD_WALLET_BIN")
+		.expect("Set an independently built pre-capability wallet for compatibility testing");
+	let ctx = TestContext::new("xbt/small_anchor_legacy").await;
+	let srv = ctx.captaind("server").no_vtxo_pool().funded(btc(2)).create().await;
+	let alice = ctx.bark("new", &srv).funded(sat(1_000_000)).create().await;
+	let bob = ctx.bark("old", &srv).exec(old_exec).create().await;
+	alice.board_and_confirm_and_register(&ctx, sat(500_000)).await;
+	alice.send_oor(&bob.address().await, sat(100_000)).await;
+	assert_eq!(alice.spendable_balance().await, sat(394_010));
+	assert_eq!(bob.spendable_balance().await, sat(100_000));
+	// The old sender retains its original 6,000-sat budget, while spending
+	// an input with both old and small-anchor recovery transactions.
+	bob.send_oor(&alice.address().await, sat(20_000)).await;
+	assert_eq!(bob.spendable_balance().await, sat(74_000));
+	assert_eq!(alice.spendable_balance().await, sat(414_010));
+	srv.stop().await.unwrap();
+	bob.start_exit_all().await;
+	complete_exit(&ctx, &bob).await;
+	bob.claim_all_exits(bob.get_onchain_address().await).await;
+	ctx.generate_blocks(1).await;
+	assert!(bob.onchain_balance().await > sat(72_000));
 }
 
 #[tokio::test]
@@ -143,7 +168,7 @@ async fn xbt_lifecycle_late_receipt_and_backup() {
 
 #[tokio::test]
 async fn xbt_lifecycle_watchman_protects_refreshed_and_withdrawn_funds() {
-	for mode in ["round", "offboard-single", "offboard-multi"] {
+	for mode in ["round", "offboard-single", "offboard-multi", "offboard-small-anchor"] {
 		let ctx = TestContext::new(format!("xbt/watchman-{mode}")).await;
 		let srv = ctx.captaind("server").no_vtxo_pool().funded(btc(10))
 			.watchmand_cfg(|cfg| {
@@ -157,6 +182,11 @@ async fn xbt_lifecycle_watchman_protects_refreshed_and_withdrawn_funds() {
 		if mode == "offboard-multi" {
 			alice.board_and_confirm_and_register(&ctx, sat(200_000)).await;
 		}
+		let alice = if mode == "offboard-small-anchor" {
+			let receiver = ctx.bark("small-anchor-receiver", &srv).create().await;
+			alice.send_oor(&receiver.address().await, sat(100_000)).await;
+			receiver
+		} else { alice };
 		let points = alice.vtxo_ids().await.into_iter().map(|v| v.to_point()).collect::<Vec<_>>();
 		let stale = alice.full_clone("stale").await;
 		if mode == "round" {
@@ -164,6 +194,10 @@ async fn xbt_lifecycle_watchman_protects_refreshed_and_withdrawn_funds() {
 			bob.board_and_confirm_and_register(&ctx, sat(200_000)).await;
 			ctx.refresh_all(&srv, &[&alice, &bob]).await;
 			ctx.generate_blocks(ROUND_CONFIRMATIONS).await;
+			// Complete the post-confirmation forfeit exchange before simulating
+			// a revoked wallet; an unconfirmed participation is not yet revoked.
+			alice.sync().await;
+			bob.sync().await;
 		} else {
 			alice.offboard_all(&alice.get_onchain_address().await).await;
 			ctx.generate_blocks(3).await;
@@ -176,6 +210,15 @@ async fn xbt_lifecycle_watchman_protects_refreshed_and_withdrawn_funds() {
 		wm.trigger_sweep().await;
 		let msg = progress.recv().wait_millis(15000).await.expect("watchman did not protect stale exit");
 		let client = ctx.bitcoind().sync_client();
+		// The log is emitted by the server node before P2P relay reaches
+		// the independent test node. Wait for that relay, not a fixed sleep.
+		tokio::time::timeout(Duration::from_secs(15), async {
+			loop {
+				if [msg.txid, msg.cpfp_txid].iter().all(|txid|
+					client.get_raw_transaction(txid, None).is_ok()) { break; }
+				tokio::time::sleep(Duration::from_millis(100)).await;
+			}
+		}).await.expect("watchman protection transactions did not relay");
 		for txid in [msg.txid, msg.cpfp_txid] {
 			let tx = client.get_raw_transaction(&txid, None).unwrap();
 			assert_eq!(tx.version, bitcoin::transaction::Version::TWO, "watchman still depends on v3");

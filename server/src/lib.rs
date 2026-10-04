@@ -283,6 +283,7 @@ impl Server {
 	pub fn ark_info(&self) -> ark::ArkInfo {
 		ark::ArkInfo {
 			exit_profile: ark::exit_policy::PAPERCLIP_EXIT_PROFILE,
+			small_anchor_transfers: true,
 			funded_lightning: self.config.experimental_funded_lightning && !self.config.cln_array.is_empty(),
 			network: self.config.network,
 			server_pubkey: self.server_pubkey,
