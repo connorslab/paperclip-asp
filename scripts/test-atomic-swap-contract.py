@@ -87,6 +87,8 @@ def main():
                 refund = spend(1, 'refund', deadline)
                 checks['early_refund'] = check(refund, False).get('reject-reason')
                 rpc('generatetoaddress', deadline-rpc('getblockcount'), miner)
+                # Even with CLTV now mature, a confirmed claim cannot also refund.
+                checks['refund_after_claim_rejected'] = not check(spend(0, 'refund', deadline), False)['allowed']
                 check(refund, True)
                 refund_txid = rpc('sendrawtransaction', refund)
                 rpc('generatetoaddress', 1, miner)

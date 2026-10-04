@@ -4,6 +4,8 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'scripts'))
 from experimental_atomic_swap import Ledger, Swap
@@ -105,6 +107,45 @@ class AtomicSwapModel(unittest.TestCase):
         with self.assertRaises(ValueError): changed.receive(self.secret, 110)
         with self.assertRaises(ValueError): changed.reconcile()
         self.assertEqual(self.b.balance('bob'), 0)
+
+    def race(self, first, second):
+        barrier = Barrier(2)
+        def run(action):
+            ledger = Ledger(self.pb)
+            try:
+                barrier.wait(timeout=5)
+                try:
+                    action(ledger)
+                    return True
+                except ValueError:
+                    return False
+            finally:
+                ledger.db.close()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            a, b = pool.submit(run, first), pool.submit(run, second)
+            return a.result(timeout=10), b.result(timeout=10)
+
+    def test_competing_claim_and_refund_credit_exactly_one_owner(self):
+        self.swap.prepare(100)
+        results = self.race(lambda l: l.claim('swap-1', self.secret),
+                            lambda l: l.refund('swap-1', 200))
+        self.assertEqual(sum(results), 1)
+        self.assertEqual(self.b.balance('provider')+self.b.balance('bob'), 100_000)
+        self.assertIn(self.b.get('swap-1')[5], ('claimed', 'refunded'))
+
+    def test_duplicate_concurrent_claim_is_idempotent(self):
+        self.swap.prepare(100)
+        self.assertEqual(self.race(lambda l: l.claim('swap-1', self.secret),
+                                   lambda l: l.claim('swap-1', self.secret)), (True, True))
+        self.assertEqual(self.b.balance('bob'), 10_000)
+
+    def test_two_orders_cannot_reserve_same_inventory(self):
+        results = self.race(
+            lambda l: l.lock('one', 'provider', 'bob', 80_000, self.hash, 200, 100),
+            lambda l: l.lock('two', 'provider', 'bob', 80_000, self.hash, 200, 100))
+        self.assertEqual(sum(results), 1)
+        self.assertEqual(self.b.balance('provider'), 20_000)
+        self.assertEqual(self.b.db.execute("SELECT sum(amount) FROM leg WHERE state='locked'").fetchone()[0], 80_000)
 
 
 if __name__ == '__main__':

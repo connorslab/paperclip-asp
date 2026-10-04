@@ -86,12 +86,25 @@ The provider monitor reconciles claims before it attempts refunds. Destination
 refunds precede source refunds. No networking, wallet access, or real sats exist
 in this model. Do not connect it to production.
 
-Ten tests cover settlement, replay, crash after destination claim, independent
+Thirteen tests cover settlement, replay, crash after destination claim, independent
 refunds, exhausted inventory, partial preparation, incorrect secrets, quote
 substitution, fee floors, timing, and provider monitoring. One adversarial test
 intentionally demonstrates loss when the provider misses its source window and
 the destination success path remains available. This is an expected negative
 result, not proof of unconditional atomicity.
+
+Concurrent tests use independent SQLite connections to race claim against
+refund, duplicate claims, and two reservations against the same inventory.
+Exactly one conflicting transition succeeds; duplicate claims credit only once.
+The isolated XBT contract test also rejects a refund after a confirmed claim
+and a claim after a confirmed refund.
+
+These results do not verify concurrent live ASP requests. Source review shows
+`cosign_oor_with_builder` locks inputs and persists the spend before signing;
+`do_oor_spend_updates` conditionally updates spendable rows and permits only
+the same transaction ID on replay. Before enabling swaps, test these guards
+through the actual server with competing swap, ordinary-send, refresh, offboard,
+and HTLC requests, including restarts. The new swap policy must use these guards.
 
 The model assumes each SQLite transition is final. Real chain confirmations,
 reorgs, VTXO ancestry, signatures, default relay policy, and emergency-exit delays
