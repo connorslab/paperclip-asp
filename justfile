@@ -29,3 +29,8 @@ int-bolt12:
 int-swap-contract:
 	cargo build --locked -p ark-lib --example atomic_swap_contract
 	SWAP_CONTRACT_BIN="${CARGO_TARGET_DIR:-target}/debug/examples/atomic_swap_contract" python3 scripts/test-atomic-swap-contract.py
+
+# Separate real ASP processes with private PostgreSQL and an isolated XBT node.
+int-asp-swap:
+	cargo build --locked -p bark-server --bin paperclip-asp --example swap_client
+	python3 scripts/test-asp-swap.py

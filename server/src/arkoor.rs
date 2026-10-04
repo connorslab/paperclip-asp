@@ -179,6 +179,7 @@ impl Server {
 		// idempotent-replay branch below skips it, this check always runs.
 		for v in &input_vtxo_states {
 			match v.vtxo.policy() {
+				VtxoPolicy::ExperimentalSwap(_) => return badarg!("swap input requires experimental settlement endpoint"),
 				VtxoPolicy::Pubkey( ..) => {},
 				VtxoPolicy::ServerHtlcSend(..) | VtxoPolicy::ServerHtlcSend_v0(..) => {
 					return badarg!("server htlc send vtxo not supported");
@@ -243,4 +244,3 @@ impl Server {
 		Ok(builder.cosign_response())
 	}
 }
-

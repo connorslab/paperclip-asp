@@ -1063,6 +1063,7 @@ const VTXO_POLICY_HARK_FORFEIT: u8 = 0x0b;
 impl ProtocolEncoding for VtxoPolicy {
 	fn encode<W: io::Write + ?Sized>(&self, w: &mut W) -> Result<(), io::Error> {
 		match self {
+			Self::ExperimentalSwap(p) => { w.emit_u8(0x7e)?; p.encode(w)?; },
 			Self::Pubkey(PubkeyVtxoPolicy { user_pubkey }) => {
 				w.emit_u8(VTXO_POLICY_PUBKEY)?;
 				user_pubkey.encode(w)?;
@@ -1115,6 +1116,7 @@ fn decode_vtxo_policy<R: io::Read + ?Sized>(
 	r: &mut R,
 ) -> Result<VtxoPolicy, ProtocolDecodingError> {
 	match type_byte {
+		0x7e => Ok(VtxoPolicy::ExperimentalSwap(crate::experimental_swap::SwapContract::decode(r)?)),
 		VTXO_POLICY_PUBKEY => {
 			let user_pubkey = PublicKey::decode(r)?;
 			Ok(VtxoPolicy::Pubkey(PubkeyVtxoPolicy { user_pubkey }))
@@ -1208,7 +1210,7 @@ impl ProtocolEncoding for ServerVtxoPolicy {
 	fn decode<R: io::Read + ?Sized>(r: &mut R) -> Result<Self, ProtocolDecodingError> {
 		let type_byte = r.read_u8()?;
 		match type_byte {
-			VTXO_POLICY_PUBKEY | VTXO_POLICY_SERVER_HTLC_SEND | VTXO_POLICY_SERVER_HTLC_RECV
+			0x7e | VTXO_POLICY_PUBKEY | VTXO_POLICY_SERVER_HTLC_SEND | VTXO_POLICY_SERVER_HTLC_RECV
 				| VTXO_POLICY_SERVER_HTLC_SEND_V0 | VTXO_POLICY_SERVER_HTLC_RECV_V0 =>
 			{
 				Ok(Self::User(decode_vtxo_policy(type_byte, r)?))
@@ -1264,6 +1266,7 @@ const GENESIS_TRANSITION_TYPE_HASH_LOCKED_COSIGNED: u8 = 4;
 impl ProtocolEncoding for GenesisTransition {
 	fn encode<W: io::Write + ?Sized>(&self, w: &mut W) -> Result<(), io::Error> {
 		match self {
+			Self::ExperimentalSwap(t) => { w.emit_u8(0x7e)?; t.encode(w)?; },
 			Self::Cosigned(t) => {
 				w.emit_u8(GENESIS_TRANSITION_TYPE_COSIGNED)?;
 				LengthPrefixedVector::new(&t.pubkeys).encode(w)?;
@@ -1311,6 +1314,7 @@ impl ProtocolEncoding for GenesisTransition {
 
 	fn decode<R: io::Read + ?Sized>(r: &mut R) -> Result<Self, ProtocolDecodingError> {
 		match r.read_u8()? {
+			0x7e => Ok(Self::ExperimentalSwap(crate::experimental_swap::SwapTransition::decode(r)?)),
 			GENESIS_TRANSITION_TYPE_COSIGNED => {
 				let pubkeys: Vec<PublicKey> = LengthPrefixedVector::decode(r)?.into_inner();
 				if pubkeys.is_empty() {

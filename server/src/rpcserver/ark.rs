@@ -312,6 +312,26 @@ impl rpc::server::ArkService for Server {
 
 	// lightning
 
+	async fn experimental_swap_lock(&self, req: tonic::Request<protos::ArkoorPackageCosignRequest>)
+		-> Result<tonic::Response<protos::ArkoorPackageCosignResponse>, tonic::Status> {
+		self.check_swap_enabled().to_status()?;
+		let request = ArkoorPackageCosignRequest::try_from(req.into_inner()).context("invalid swap request")?;
+		Ok(tonic::Response::new(self.lock_swap(request).await.to_status()?.into()))
+	}
+
+	async fn experimental_swap_settle(&self, req: tonic::Request<protos::ExperimentalSwapSettleRequest>)
+		-> Result<tonic::Response<protos::ExperimentalSwapSettleResponse>, tonic::Status> {
+		self.check_swap_enabled().to_status()?;
+		let req = req.into_inner();
+		let id = ark::VtxoId::from_slice(&req.input_id).map_err(|_| tonic::Status::invalid_argument("input id"))?;
+		let recipient = bitcoin::secp256k1::PublicKey::from_slice(&req.recipient).map_err(|_| tonic::Status::invalid_argument("recipient"))?;
+		let signature = bitcoin::secp256k1::schnorr::Signature::from_slice(&req.participant_signature)
+			.map_err(|_| tonic::Status::invalid_argument("participant signature"))?;
+		let preimage = req.preimage.map(|p| <[u8; 32]>::try_from(p).map_err(|_| tonic::Status::invalid_argument("preimage length"))).transpose()?;
+		let vtxo = self.settle_swap(id, recipient, req.refund, preimage, signature).await.to_status()?;
+		Ok(tonic::Response::new(protos::ExperimentalSwapSettleResponse { vtxo: vtxo.serialize() }))
+	}
+
 	#[tracing::instrument(skip(self, req))]
 	async fn request_lightning_pay_htlc_cosign(
 		&self,

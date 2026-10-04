@@ -7,6 +7,7 @@
 mod error;
 
 pub mod arkoor;
+mod experimental_swap;
 pub mod sync;
 pub mod config;
 pub mod database;

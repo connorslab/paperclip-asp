@@ -1,11 +1,59 @@
 # Direct atomic Ark swaps
 
 Decision: selected on 2026-10-04 UTC for `feature/inter-asp-openark`.
-Status: coordination model, candidate swap scripts, and signed VTXO locking test.
-No networked ASP-to-ASP payment capability is implemented.
+Status: experimental settlement tested between two real regtest ASP processes.
+Disabled by default; enabling it outside regtest is rejected. Not a public release.
 
 See the [plain-language walkthrough](atomic-swap-walkthrough.md) for the payment
 flow, liquidity movement, and failure cases.
+
+## Run the two-ASP integration test
+
+```sh
+nix develop
+XBT_BITCOIND=/absolute/path/to/verified/xbt/bitcoind just int-asp-swap
+```
+
+This starts an isolated XBT Knots node, private PostgreSQL with separate ASP
+databases, and two `paperclip-asp` processes. All RPC listeners use loopback;
+the node has no peers. The fixture client uses PUBLIC deterministic user keys.
+Never use its addresses or keys for real funds. Each run creates new state in
+`/tmp/paperclip-asp-swap-*`; `report.json` records results. All child processes
+stop when the test finishes, including on failure.
+
+The test boards real regtest UTXOs, creates one conditional VTXO on each ASP,
+claims on B and then A with the same secret, and validates the complete signed
+ancestry. The recipient receives 20,000 sats backed by B; the provider receives
+25,320 sats backed by A. Both then make ordinary 5,000-sat Ark payments.
+It also checks duplicate/concurrent claims, conflicting destinations, reuse of
+locked inventory, restart replay, premature refunds, mature refunds, and
+disabled endpoint rejection. With both ASPs stopped, it broadcasts and confirms
+the recipient's six-transaction ancestry through XBT Knots under default policy.
+This last check validates real ancestry and settlement signatures, but is not
+a complete adversarial unilateral-exit or reorg campaign.
+
+Current test economics, excluding initial boarding and the later 5,000-sat
+demonstration payments:
+
+| Item | Sats |
+|---|---:|
+| Recipient's net payment | 20,000 |
+| Lock allocation per side, with change | 3,990 |
+| Settlement allocation per side | 1,330 |
+| Total allocation across both sides | 10,640 |
+| Provider's destination costs reimbursed by sender | 5,320 |
+| Provider's net margin in this fixture | 0 |
+
+These are recovery allocations, not fees already paid to miners. This first
+end-to-end path is more expensive than a single local Ark transfer. It does not
+yet satisfy the low-fee objective; batching or reducing the number of recovery
+steps requires further design and testing. The fixture does not subsidize the
+provider from ASP funds.
+
+The test client coordinates both servers with predetermined participants and
+a public fixture secret. Production still needs authenticated quotes, recipient
+authorization, private secret generation and disclosure, automatic monitoring,
+and peer discovery. No production wallet UI or automatic ASP peering is enabled.
 
 ## Candidate swap policy
 
@@ -29,18 +77,19 @@ isolated XBT Knots, including wrong participant/server signatures, wrong secret,
 premature recovery/refund and conflicting spends. These chain tests use directly
 funded UTXOs, not the signed VTXO ancestry fixture.
 
-The candidate is a generic library policy only. There is no production wire
-discriminant, capability advertisement, database admission or wallet support.
-Existing policy encodings remain unchanged. Next implementation steps are:
+The branch now adds experimental policy and genesis discriminants (`0x7e`),
+version-one contract encoding, and regtest-only `ExperimentalSwapLock` and
+`ExperimentalSwapSettle` RPCs. Existing policy encodings remain unchanged.
+Old wallets cannot decode experimental swap ancestry; use only the fixture
+client or a future explicitly compatible wallet for these outputs. Ordinary
+existing wallet traffic retains its current format.
 
-1. Add versioned settlement genesis proofs that validate both cooperative
-   signatures and the preimage, producing ordinary spendable destination VTXOs.
-2. Bind the policy's ASP key and recovery parameters to the enclosing VTXO;
-   enforce deadline margins against its complete ancestry and checkpoint expiry.
-3. Add negotiated experimental APIs and transactional spend guards for lock,
-   claim and refund, including restart-safe signature replay.
-4. Run two isolated captaind instances and wallets through successful settlement,
-   refunds, conflicting requests and independent recovery before any real funding.
+Admission binds the contract's ASP key and CSV delay to its VTXO, restricts
+amounts to 1,000,000 sats, requires funded ancestry/checkpoints, and checks
+deadline headroom. Settlement checks the participant signature and secret,
+persists the spent input and signed output in one database transaction, and
+returns the committed result on replay, even after its deadline. Ordinary send,
+round and offboard admission do not accept conditional swap inputs.
 
 No final cross-ASP fee quote or production safety claim follows from these tests.
 
@@ -58,7 +107,8 @@ fixtures, not broadcasts by two running Ark servers. The test explicitly verifie
 that the source HTLC's success claimant remains the local server. Consequently,
 the current policies cannot express the independent provider's source claim.
 Do not route swaps through these APIs until a new policy or proved composition
-supports that role. No runtime policy or wire encoding changed in this milestone.
+supports that role. The new experiment uses `ExperimentalSwap`, not those
+Lightning policies.
 
 ## Standalone transaction fixture
 
@@ -104,7 +154,8 @@ script enforcement and paired claims, not a secure end-to-end Ark swap.
 - Verify each participant's independent recovery under server failure and reorgs.
 - Add authenticated peer/recipient bindings and immutable signed quotes.
 - Reserve inventory durably and reconcile unknown outcomes without duplicate debit.
-- Connect two independent test Ark servers and wallets; measure actual costs.
+- Extend the passing two-ASP fixture to production wallet integration and
+  adversarial monitoring, recovery, partition, and reorg tests.
 - Keep old VTXO policies and wallet APIs functional and retain rollback procedures.
 
 The current fixtures do not meet these gates. No production swap capability is
@@ -136,16 +187,18 @@ Exactly one conflicting transition succeeds; duplicate claims credit only once.
 The isolated XBT contract test also rejects a refund after a confirmed claim
 and a claim after a confirmed refund.
 
-These results do not verify concurrent live ASP requests. Source review shows
+The separate two-ASP integration test now also races duplicate claims through
+the real RPC and database paths. Source review shows
 `cosign_oor_with_builder` locks inputs and persists the spend before signing;
 `do_oor_spend_updates` conditionally updates spendable rows and permits only
-the same transaction ID on replay. Before enabling swaps, test these guards
+the same transaction ID on replay. Before enabling production swaps, expand testing
 through the actual server with competing swap, ordinary-send, refresh, offboard,
-and HTLC requests, including restarts. The new swap policy must use these guards.
+and HTLC requests, including restarts. The experimental swap policy uses these guards.
 
 The model assumes each SQLite transition is final. Real chain confirmations,
 reorgs, VTXO ancestry, signatures, default relay policy, and emergency-exit delays
-are not modeled. Transaction-level validation remains the next prerequisite.
+are not modeled by that SQLite model. The separate two-ASP test validates actual
+VTXO ancestry and transactions; reorg and comprehensive adversarial testing remain required.
 
 ## Outcome and participants
 

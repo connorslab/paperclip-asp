@@ -1,6 +1,6 @@
 # A payment between two Ark servers
 
-This describes the intended swap. It is not a live feature.
+This describes the swap design tested in isolated regtest. It is not a production feature.
 Example: Alice sends Bob 10,000 sats. Fees are separate and quoted before approval.
 
 ## Before the payment
@@ -64,8 +64,21 @@ the nominal timeout does not disable the hashlock branch.
   restart, and a one-block reorg.
 - Actual signed VTXO builders: two distinct server identities, transaction-graph
   validation, incorrect signer rejection, and preimage validation.
+- Two real ASP processes with separate databases: a 20,000-sat regtest payment,
+  ordinary onward payments from both settlement outputs, refunds, conflicting
+  requests, concurrent duplicate claims, and restart replay.
+- The recipient's six-transaction signed ancestry accepted and confirmed by XBT
+  Knots after both ASPs stopped.
 
 The VTXO test confirms that existing Lightning policies remain local-server
 contracts. A matching payment hash does not turn them into a direct swap. A new
-policy must encode the independent swap claimant and preserve the local server's
-co-signing and recovery rules. Full two-server settlement remains unimplemented.
+experimental policy now encodes the independent claimant and preserves local
+co-signing requirements. The two-server fixture uses it instead of the Lightning
+policies. It is still regtest-only, with predetermined participants and public
+test secrets. Production quoting, private-secret handling, monitoring and full
+failure testing remain required.
+
+The first complete test uses 10,640 sats in combined recovery allocations for a
+20,000-sat payment. The sender covers both sides, so the provider is not subsidized.
+This is a correctness prototype, not the intended low-fee production design.
+See the [test instructions and cost breakdown](atomic-ark-swaps.md).

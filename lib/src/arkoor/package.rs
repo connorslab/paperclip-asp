@@ -107,6 +107,15 @@ pub struct ArkoorPackageCosignResponse {
 }
 
 impl ArkoorPackageBuilder<state::Initial> {
+	pub fn new_funded_swap(inputs: Vec<Vtxo<Full>>, destination: ArkoorDestination,
+		change_policy: VtxoPolicy,
+	) -> Result<(Self, Amount), ArkoorConstructionError> {
+		if !matches!(destination.policy, VtxoPolicy::ExperimentalSwap(_)) {
+			return Err(ArkoorConstructionError::IncompatibleExitFunding);
+		}
+		Self::new_funded_destination_with_funding(inputs, destination, change_policy,
+			crate::exit_policy::small_anchor_transfer_funding())
+	}
 	/// Fund each recovery transaction from the sender's inputs without reducing
 	/// the requested recipient amount. Change belongs to the sender. The caller
 	/// must persist the chosen inputs and keys before requesting signatures.
@@ -624,6 +633,7 @@ mod test {
 	use super::*;
 	use crate::test_util::dummy::DummyTestVtxoSpec;
 	use crate::PublicKey;
+	use crate::ProtocolEncoding;
 	use bitcoin::hashes::Hash;
 	use crate::vtxo::policy::Policy;
 	use crate::experimental_swap::SwapContract;
@@ -793,6 +803,43 @@ mod test {
 				assert_eq!(output.exit_transaction_fee(item.tx.compute_txid()), Some(Amount::from_sat(1000)));
 			}
 		}
+	}
+
+	#[test]
+	fn inter_asp_settlement_roundtrip_and_spend() {
+		let (funding, input) = funded_test_input(Amount::from_sat(100_000));
+		let preimage = [42; 32];
+		let contract = SwapContract::new(bob_public_key(), alice_public_key(), server_keypair().public_key(),
+			bitcoin::hashes::sha256::Hash::hash(&preimage), 500, 128).unwrap();
+		let (builder, _) = ArkoorPackageBuilder::new_funded_swap(vec![input], ArkoorDestination {
+			total_amount: Amount::from_sat(30_000), policy: VtxoPolicy::ExperimentalSwap(contract),
+		}, VtxoPolicy::new_pubkey(alice_public_key())).unwrap();
+		let outputs = builder.cosign_both(&[alice_keypair()], &server_keypair()).unwrap().build_signed_vtxos();
+		let locked = outputs.into_iter().find(|v| matches!(v.policy(), VtxoPolicy::ExperimentalSwap(_))).unwrap();
+		locked.validate(&funding).unwrap();
+		let encoded = locked.serialize();
+		let locked = Vtxo::<Full>::deserialize(&encoded).unwrap();
+		assert_eq!(locked.serialize(), encoded);
+		for refund in [false, true] {
+			let owner = if refund { alice_keypair() } else { bob_keypair() };
+			let mut builder = crate::experimental_swap::SettlementBuilder::new(locked.clone(), owner.public_key(),
+				refund, if refund { None } else { Some(preimage) }).unwrap();
+			assert!(builder.sign_participant(&server_keypair()).is_err());
+			builder.sign_participant(&owner).unwrap();
+			assert!(builder.sign_server(&owner).is_err());
+			builder.sign_server(&server_keypair()).unwrap();
+			let output = builder.finish().unwrap();
+			output.validate(&funding).unwrap();
+			let bytes = output.serialize();
+			let mut decoded = Vtxo::<Full>::deserialize(&bytes).unwrap();
+			decoded.validate(&funding).unwrap();
+			decoded.invalidate_final_sig(); assert!(decoded.validate(&funding).is_err());
+			let (spend, _) = ArkoorPackageBuilder::new_funded_payment_with_funding(vec![output], ArkoorDestination {
+				total_amount: Amount::from_sat(5000), policy: VtxoPolicy::new_pubkey(server_keypair().public_key()),
+			}, VtxoPolicy::new_pubkey(owner.public_key()), crate::exit_policy::small_anchor_transfer_funding()).unwrap();
+			for v in spend.cosign_both(&[owner], &server_keypair()).unwrap().build_signed_vtxos() { v.validate(&funding).unwrap(); }
+		}
+		assert!(crate::experimental_swap::SettlementBuilder::new(locked, bob_public_key(), false, Some([43;32])).is_err());
 	}
 
 	#[test]

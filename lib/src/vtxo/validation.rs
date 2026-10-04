@@ -79,6 +79,9 @@ fn verify_transition<P: Policy>(
 
 	if check_signatures {
 		match &item.transition {
+			GenesisTransition::ExperimentalSwap(inner) => {
+				inner.validate_sigs(&tx, prev_txout, vtxo.server_pubkey, vtxo.exit_delta, vtxo.expiry_height)?
+			}
 			GenesisTransition::Cosigned(inner) => {
 				inner.validate_sigs(&tx, 0, prev_txout, vtxo.server_pubkey, vtxo.expiry_height)?
 			}
@@ -118,6 +121,8 @@ fn validate_inner<P: Policy>(
 	check_signatures: bool,
 ) -> Result<(), VtxoValidationError> {
 	// We start by validating the chain anchor output.
+	vtxo.policy.validate_context(vtxo.server_pubkey, vtxo.exit_delta, vtxo.expiry_height)
+		.map_err(VtxoValidationError::Invalid)?;
 	let anchor_txout = chain_anchor_tx.output.get(vtxo.chain_anchor().vout as usize)
 		.ok_or(VtxoValidationError::Invalid("chain anchor vout out of range"))?;
 

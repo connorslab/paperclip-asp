@@ -266,6 +266,12 @@ impl ActionContextFetcher<'_> {
 		let params = self.build_params(vtxo, confirmed_at).await;
 
 		let action = match vtxo.policy() {
+			// Once settled, progress the registered signed child before either
+			// participant's delayed recovery can conflict with it.
+			ServerVtxoPolicy::User(VtxoPolicy::ExperimentalSwap(_)) => {
+				try_progress(&params, self.fetch_progress(vtxo).await,
+					params.confirmed_at + params.exit_delta).unwrap_or(Action::Wait)
+			},
 			ServerVtxoPolicy::ServerOwned => {
 				decide_server_owned(&params)
 			},

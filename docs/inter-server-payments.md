@@ -2,9 +2,10 @@
 
 Status: prototype. `ark::interop` implements recipient-signed address-to-offer
 authorization. The [swap experiment](atomic-ark-swaps.md) includes a persistent
-two-ledger model and standalone XBT regtest claim/refund contracts. No discovery
-endpoint, payment adapter, or new settlement behavior is enabled. Production
-behavior remains unchanged.
+two-ledger model and a passing two-ASP XBT regtest settlement test using actual
+funded VTXOs. Experimental lock/settlement endpoints are disabled by default and
+restricted to regtest. No production discovery or payment adapter is enabled.
+Production behavior remains unchanged.
 
 Development branch: `feature/inter-asp-openark`.
 

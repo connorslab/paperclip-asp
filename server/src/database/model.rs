@@ -249,6 +249,14 @@ impl<G, P: Policy> VtxoState<G, P> {
 		}
 		Ok(())
 	}
+
+	pub fn check_swap_spendable(&self, chain_tip: BlockHeight, txid: Txid) -> anyhow::Result<()> {
+		if self.vtxo.policy().policy_type() != VtxoPolicyKind::ExperimentalSwap {
+			return badarg!("not a swap VTXO");
+		}
+		if self.spend_state == SpendState::Spent && self.oor_spent_txid == Some(txid) { return Ok(()); }
+		self.check_state_spendable(chain_tip)
+	}
 }
 
 impl<P: Policy> AsRef<Vtxo<Full, P>> for VtxoState<Full, P> {

@@ -258,6 +258,9 @@ pub struct Config {
 	/// Whether server allows spending expired VTXOs in arkoor
 	#[serde(default)]
 	pub allow_expired_arkoor: bool,
+	/// Isolated regtest only: experimental direct cross-ASP swaps.
+	#[serde(default)]
+	pub experimental_swaps: bool,
 
 	#[serde(with = "utils::serde::duration")]
 	pub round_interval: Duration,
@@ -566,6 +569,9 @@ impl Config {
 		if self.network == bitcoin::Network::Bitcoin && !self.require_board_funding_tx {
 			bail!("Cannot turn off require_board_funding_tx on mainnet");
 		}
+		if self.experimental_swaps && self.network != bitcoin::Network::Regtest {
+			bail!("experimental_swaps is restricted to isolated regtest");
+		}
 
 		if self.network == bitcoin::Network::Bitcoin && self.round_legacy_hashlock_clauses {
 			bail!("Cannot turn on round_legacy_hashlock_clauses on mainnet");
@@ -711,6 +717,20 @@ mod test {
 		cfg.bitcoind.cookie = Some(".cookie".into());
 
 		cfg.validate().expect("error validating default config");
+	}
+
+	#[test]
+	fn experimental_swaps_are_opt_in_and_regtest_only() {
+		let mut cfg = Config::load(DEFAULT_CAPTAIND_CONFIG_PATH).unwrap();
+		cfg.bitcoind.cookie = Some(".cookie".into());
+		assert!(!cfg.experimental_swaps);
+		cfg.require_board_funding_tx = true;
+		cfg.experimental_swaps = true;
+		cfg.network = bitcoin::Network::Regtest; cfg.validate().unwrap();
+		for network in [bitcoin::Network::Bitcoin, bitcoin::Network::Testnet, bitcoin::Network::Signet] {
+			cfg.network = network;
+			assert!(cfg.validate().unwrap_err().to_string().contains("experimental_swaps"));
+		}
 	}
 
 	#[test]

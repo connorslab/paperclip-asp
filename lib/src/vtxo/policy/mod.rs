@@ -106,6 +106,7 @@ pub fn check_block_height<T: TryInto<BlockHeight>>(v: T) -> Result<BlockHeight, 
 
 /// Trait for policy types that can be used in a Vtxo.
 pub trait Policy: Clone + Send + Sync + 'static {
+	fn validate_context(&self, _server: PublicKey, _delta: BlockDelta, _expiry: BlockHeight) -> Result<(), &'static str> { Ok(()) }
 	fn policy_type(&self) -> VtxoPolicyKind;
 
 	fn taproot(
@@ -959,6 +960,8 @@ impl From<HarkForfeit_v0_VtxoPolicy> for ServerVtxoPolicy {
 /// `user_pubkey()` method. These policies are used in protocol messages and by clients.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum VtxoPolicy {
+	/// Opt-in regtest experiment; unsupported by ordinary payment endpoints.
+	ExperimentalSwap(crate::experimental_swap::SwapContract),
 	/// Standard VTXO output protected with a public key.
 	///
 	/// This can be the result of either:
@@ -1035,6 +1038,7 @@ impl VtxoPolicy {
 	/// The policy type id.
 	pub fn policy_type(&self) -> VtxoPolicyKind {
 		match self {
+			Self::ExperimentalSwap(_) => VtxoPolicyKind::ExperimentalSwap,
 			Self::Pubkey { .. } => VtxoPolicyKind::Pubkey,
 			Self::ServerHtlcSend { .. } => VtxoPolicyKind::ServerHtlcSend,
 			Self::ServerHtlcRecv { .. } => VtxoPolicyKind::ServerHtlcRecv,
@@ -1046,6 +1050,7 @@ impl VtxoPolicy {
 	/// Whether a [Vtxo](crate::Vtxo) with this output can be spent in an arkoor tx.
 	pub fn is_arkoor_compatible(&self) -> bool {
 		match self {
+			Self::ExperimentalSwap(_) => false,
 			Self::Pubkey { .. } => true,
 			Self::ServerHtlcSend { .. } => false,
 			Self::ServerHtlcRecv { .. } => false,
@@ -1059,6 +1064,7 @@ impl VtxoPolicy {
 	/// Returns [None] for HTLC policies.
 	pub fn arkoor_pubkey(&self) -> Option<PublicKey> {
 		match self {
+			Self::ExperimentalSwap(_) => None,
 			Self::Pubkey(PubkeyVtxoPolicy { user_pubkey }) => Some(*user_pubkey),
 			Self::ServerHtlcSend { .. } => None,
 			Self::ServerHtlcRecv { .. } => None,
@@ -1070,6 +1076,7 @@ impl VtxoPolicy {
 	/// Returns the user pubkey associated with this policy.
 	pub fn user_pubkey(&self) -> PublicKey {
 		match self {
+			Self::ExperimentalSwap(p) => p.claimant(),
 			Self::Pubkey(PubkeyVtxoPolicy { user_pubkey }) => *user_pubkey,
 			Self::ServerHtlcSend(ServerHtlcSendVtxoPolicy { user_pubkey, .. }) => *user_pubkey,
 			Self::ServerHtlcRecv(ServerHtlcRecvVtxoPolicy { user_pubkey, .. }) => *user_pubkey,
@@ -1086,6 +1093,7 @@ impl VtxoPolicy {
 	) -> taproot::TaprootSpendInfo {
 		let _ = expiry_height; // not used by user-facing policies
 		match self {
+			Self::ExperimentalSwap(p) => p.taproot().expect("validated swap tree"),
 			Self::Pubkey(policy) => policy.taproot(server_pubkey, exit_delta),
 			Self::ServerHtlcSend(policy) => policy.taproot(server_pubkey, exit_delta),
 			Self::ServerHtlcRecv(policy) => policy.taproot(server_pubkey, exit_delta),
@@ -1124,6 +1132,7 @@ impl VtxoPolicy {
 	) -> Vec<VtxoClause> {
 		match self {
 			Self::Pubkey(policy) => policy.clauses(exit_delta),
+			Self::ExperimentalSwap(p) => Policy::clauses(p, exit_delta, _expiry_height, server_pubkey),
 			Self::ServerHtlcSend(policy) => policy.clauses(exit_delta, server_pubkey),
 			Self::ServerHtlcRecv(policy) => policy.clauses(exit_delta, server_pubkey),
 			Self::ServerHtlcSend_v0(policy) => policy.clauses(exit_delta, server_pubkey),
@@ -1306,6 +1315,9 @@ impl ServerVtxoPolicy {
 }
 
 impl Policy for VtxoPolicy {
+	fn validate_context(&self, server: PublicKey, delta: BlockDelta, expiry: BlockHeight) -> Result<(), &'static str> {
+		match self { Self::ExperimentalSwap(p) => p.check_context(server, delta, expiry), _ => Ok(()) }
+	}
 	fn policy_type(&self) -> VtxoPolicyKind {
 		VtxoPolicy::policy_type(self)
 	}
@@ -1330,6 +1342,9 @@ impl Policy for VtxoPolicy {
 }
 
 impl Policy for ServerVtxoPolicy {
+	fn validate_context(&self, server: PublicKey, delta: BlockDelta, expiry: BlockHeight) -> Result<(), &'static str> {
+		match self { Self::User(p) => p.validate_context(server, delta, expiry), _ => Ok(()) }
+	}
 	fn policy_type(&self) -> VtxoPolicyKind {
 		ServerVtxoPolicy::policy_type(self)
 	}

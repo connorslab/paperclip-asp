@@ -19,6 +19,7 @@ use crate::vtxo::MaybePreimage;
 
 /// Represents the kind of [GenesisTransition]
 pub enum TransitionKind {
+	ExperimentalSwap,
 	Cosigned,
 	HashLockedCosigned,
 	#[allow(non_camel_case_types)]
@@ -29,6 +30,7 @@ pub enum TransitionKind {
 impl TransitionKind {
 	pub const fn as_str(&self) -> &'static str {
 		match self {
+			Self::ExperimentalSwap => "experimental-swap-v1",
 			Self::Cosigned => "cosigned",
 			Self::HashLockedCosigned => "hash-locked-cosigned-v1",
 			Self::HashLockedCosigned_v0 => "hash-locked-cosigned",
@@ -430,6 +432,7 @@ impl ArkoorGenesis {
 /// See private module-level documentation for more info.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GenesisTransition {
+	ExperimentalSwap(crate::experimental_swap::SwapTransition),
 	/// A transition based on a cosignature.
 	///
 	/// This can be either the result of a cosigned "clArk" tree branch transition
@@ -498,6 +501,7 @@ impl GenesisTransition {
 	) -> TxOut {
 		match self {
 			Self::Cosigned(inner) => inner.input_txout(amount, server_pubkey, expiry_height),
+			Self::ExperimentalSwap(inner) => inner.input_txout(amount),
 			Self::HashLockedCosigned(inner) => inner.input_txout(amount, server_pubkey, expiry_height),
 			Self::HashLockedCosigned_v0(inner) => inner.input_txout(amount, server_pubkey, expiry_height),
 			Self::Arkoor(inner) => inner.input_txout(amount, server_pubkey),
@@ -512,6 +516,7 @@ impl GenesisTransition {
 	) -> Witness {
 		match self {
 			Self::Cosigned(inner) => inner.witness(),
+			Self::ExperimentalSwap(inner) => inner.witness(),
 			Self::HashLockedCosigned(inner) => inner.witness(server_pubkey, expiry_height),
 			Self::HashLockedCosigned_v0(inner) => inner.witness(server_pubkey, expiry_height),
 			Self::Arkoor(inner) => inner.witness(),
@@ -523,6 +528,8 @@ impl GenesisTransition {
 	pub fn has_all_witnesses(&self) -> bool {
 		match self {
 			Self::Cosigned(inner) => inner.has_all_witnesses(),
+			Self::ExperimentalSwap(inner) => inner.participant_sig.is_some() && inner.server_sig.is_some()
+				&& (inner.refund || inner.preimage.is_some()),
 			Self::HashLockedCosigned(inner) => inner.has_all_witnesses(),
 			Self::HashLockedCosigned_v0(inner) => inner.has_all_witnesses(),
 			Self::Arkoor(inner) => inner.has_all_witnesses(),
@@ -533,6 +540,7 @@ impl GenesisTransition {
 	pub fn kind(&self) -> TransitionKind {
 		match self {
 			Self::Cosigned { .. } => TransitionKind::Cosigned,
+			Self::ExperimentalSwap { .. } => TransitionKind::ExperimentalSwap,
 			Self::HashLockedCosigned { .. } => TransitionKind::HashLockedCosigned,
 			Self::HashLockedCosigned_v0 { .. } => TransitionKind::HashLockedCosigned_v0,
 			Self::Arkoor { .. } => TransitionKind::Arkoor,
@@ -584,7 +592,10 @@ impl GenesisItem {
 	) -> Transaction {
 		Transaction {
 			version: self.exit_format.version(),
-			lock_time: bitcoin::absolute::LockTime::ZERO,
+			lock_time: match &self.transition {
+				GenesisTransition::ExperimentalSwap(t) if t.refund => bitcoin::absolute::LockTime::from_consensus(t.contract.deadline()),
+				_ => bitcoin::absolute::LockTime::ZERO,
+			},
 			input: vec![TxIn {
 				previous_output: prev,
 				script_sig: ScriptBuf::new(),
