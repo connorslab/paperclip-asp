@@ -7,6 +7,7 @@ pub extern crate bitcoin;
 #[macro_use] pub mod util;
 
 pub mod address;
+pub mod sideflash;
 pub mod arkoor;
 pub mod attestations;
 pub mod board;

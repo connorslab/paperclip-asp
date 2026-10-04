@@ -1,6 +1,7 @@
 # Sideflash implementation plan
 
-Status: design and implementation branch. Sideflash is not enabled in production.
+Status: experimental address codec and authentication implemented. Sideflash is
+not enabled in production. See [the development wire profile](sideflash-wire-v0.md).
 
 The `feature/sideflash` branch starts from `main` at `4287d6a`. Its purpose is
 Sideflash compatibility between independent Ark servers. Existing Ark addresses,
@@ -61,5 +62,7 @@ Ark backing, remove recovery costs, or guarantee zero fees.
 - Review authentication, resolver request restrictions, amount arithmetic and
   resource limits before public activation.
 
-No server deployment, wallet release or monetary test is part of this branch
-initialization. Runtime support remains to be implemented.
+No server deployment, wallet release or monetary test is part of this branch.
+Server registration, delivery coordination and wallet integration remain to be
+implemented. The library supports verified offer extraction for Lightning-only
+clients as well as native Ark route selection.
