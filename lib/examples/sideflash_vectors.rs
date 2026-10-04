@@ -24,5 +24,5 @@ fn main() {
 			"offer":offer.to_string(),"recipient_key":user.public_key().to_string(),
 			"server_key":server.public_key().to_string(),"verify_at":100}));
 	}
-	println!("{}", serde_json::to_string_pretty(&serde_json::json!({"profile":"sideflash-v0-xbt", "vectors":vectors})).unwrap());
+	println!("{}", serde_json::to_string_pretty(&serde_json::json!({"profile":"sideflash-v1-xbt", "vectors":vectors})).unwrap());
 }

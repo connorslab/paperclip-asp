@@ -1,7 +1,7 @@
 # Sideflash implementation plan
 
 Status: experimental address codec and authentication implemented. Sideflash is
-not enabled in production. See [the development wire profile](sideflash-wire-v0.md).
+not enabled in production. See [the development wire profile](sideflash-wire-v1.md).
 
 The `feature/sideflash` branch starts from `main` at `4287d6a`. Its purpose is
 Sideflash compatibility between independent Ark servers. Existing Ark addresses,
@@ -32,8 +32,8 @@ Ark backing, remove recovery costs, or guarantee zero fees.
 2. Bind both destinations. Verify recipient authorization and the destination
    server acknowledgment over the exact Ark destination and offer bytes. Support
    restricted delegation only with a verifiable recipient-policy certificate.
-3. Add recipient registration and authenticated resolution. Pin server identity,
-   check fresh nonces, expiry and revisions, and restrict resolver network access.
+3. Add recipient registration and authenticated payment status. Pin server identity,
+   check fresh nonces, expiry and revisions. Address extraction stays offline.
    Do not expose a public directory of recipients.
 4. Add durable payment preparation. Bind the invoice, payment hash, destination,
    net receipt, fees and inventory reservation to an immutable payment intent.
@@ -59,7 +59,7 @@ Ark backing, remove recovery costs, or guarantee zero fees.
 - Test expired invoices, unavailable recipients, insufficient inventory, route
   failures, reservation cleanup and conditional recovery.
 - Verify old wallet versions and ordinary Ark and Lightning payments still work.
-- Review authentication, resolver request restrictions, amount arithmetic and
+- Review authentication, payment request restrictions, amount arithmetic and
   resource limits before public activation.
 
 No server deployment, wallet release or monetary test is part of this branch.

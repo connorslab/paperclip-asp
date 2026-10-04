@@ -1,4 +1,6 @@
-# Sideflash development wire profile
+# Legacy Sideflash wire profile v0
+
+This profile remains readable. New bindings use [compact v1](sideflash-wire-v1.md).
 
 This profile targets bitcoin (XBT), not SHA-256 BTC. The development fork
 discriminator is SHA256 of ASCII `Sideflash/XBT/blake2b-unified-sighash/v0` (no
