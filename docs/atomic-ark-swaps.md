@@ -1,0 +1,95 @@
+# Direct atomic Ark swaps
+
+Decision: selected on 2026-10-04 UTC for `feature/inter-asp-openark`.
+Status: transaction design, not an implemented payment capability.
+
+## Outcome and participants
+
+Alice has value on server A. Bob wants value on server B. A liquidity provider
+has spendable inventory on B and accepts an enforceable claim on A in exchange.
+The provider can be an operator or a separate participant. Alice and Bob do not
+need Lightning channels. No Lightning routing is required for the direct path.
+
+After success, Bob holds a recoverable claim backed by B. The provider holds a
+claim backed by A. Inventory changes location; backing does not teleport between
+servers. Opposite-direction payments can restore inventory. Sustained one-way
+flow requires priced rebalancing. No unsecured inter-operator credit is allowed.
+
+Both legs use the same explicit XBT network and payment hash. Bob generates the
+secret and retains it until he verifies and saves his complete recovery package.
+The quote binds both full server keys, participant keys, recipient address,
+amounts, payment hash, deadlines, recovery profiles, and a unique operation ID.
+The existing address-to-BOLT12 binding is fallback work. It is not swap consent.
+
+## Required contract properties
+
+The source leg transfers Alice's value to the provider with the secret, or lets
+Alice recover it after the refund boundary. The destination leg transfers the
+provider's value to Bob with that same secret, or lets the provider recover it.
+
+Before the provider commits destination inventory, it must verify the source
+claim, its ancestry, signatures, availability window, and exit funding. Before
+Bob releases the secret, he must verify his destination claim to the same level.
+Do not accept a server database entry or a promise to sign later as proof.
+
+Persist recovery packages and operation state before each irreversible action.
+An unknown RPC outcome requires reconciliation. It does not authorize another
+swap. Revealing the secret prevents an unconditional cancellation promise.
+
+An Ark swap retains the underlying Ark assumptions, including server behavior
+for out-of-round transfers, monitoring, expiry, and timely chain access. Atomic
+settlement does not remove these assumptions or make either server unnecessary.
+
+## Timeout design is a release prerequisite
+
+The source recovery window must permit the provider to claim after Bob exercises
+the destination success path. Derive the window from the latest possible
+destination preimage disclosure, ancestor confirmation delays, CSV delays, CLTV
+boundaries, reorg allowance, and a confirmation/fee-bump margin. Use block heights,
+not estimated wall-clock dates. Reject VTXOs whose lifetimes cannot cover it.
+
+Do not assume `source expiry > destination expiry` proves this property. A
+hashlock success branch can remain spendable after a refund branch becomes
+available. Refund and success can race. The proof and tests must cover late
+disclosure and the exact transaction graph, not just nominal invoice deadlines.
+
+Current `ServerHtlcSendVtxoPolicy` and `ServerHtlcRecvVtxoPolicy` use the local
+server as a privileged counterparty. The send policy also combines relative
+delays with its refund boundary. Replacing a server key with a peer key is not
+an implementation. A separate versioned policy or a proved composition is needed.
+Old policy encodings and existing claims must remain unchanged.
+
+## Cost and liquidity rules
+
+Measure actual source and destination transaction graphs under default XBT relay
+policy. Ordinary pubkey-transfer small-anchor budgets are not evidence that a
+swap has the same cost. Test each emergency success and refund path independently.
+
+The quote separates recipient net value, each recovery allocation, service fees,
+and liquidity/rebalancing charges. Reserve destination inventory atomically and
+persist the reservation. Never count a pending source claim as spendable
+destination inventory. Bound concurrent reservations and reject exhausted peers.
+
+Aim for low fees through simple graphs, input selection, inventory reuse, and
+batched rebalancing. Do not quote a guaranteed local-transfer price or depend on
+an ASP subsidy. Refresh, recovery monitoring, and rebalancing remain real costs.
+Record realized costs so the operator can detect a negative margin.
+
+## Prototype sequence
+
+1. Construct both transaction graphs and enumerate every spend branch. Specify
+   who signs each transaction and who can recover after each possible interruption.
+2. Validate scripts and fees with XBT regtest nodes at default policy. Demonstrate
+   independent source refund, destination refund, and both success paths.
+3. Test adversarial timing, especially late secret disclosure and an offline
+   server. Establish the timeout rules from these graphs.
+4. Add versioned capability negotiation, recipient authorization, and signed
+   quotes. Peers without the exact capability remain unsupported.
+5. Add durable reservations, idempotency, restart reconciliation, and watchman
+   support. Exercise two independent Paperclip servers and separate wallet keys.
+6. Add wallet review and status UI. Report destination-backed receipt explicitly.
+7. Test OpenArk through an adapter only after its actual XBT transaction graphs
+   satisfy the same contract. Shared HTLC terminology alone is insufficient.
+
+No production activation, public compatibility claim, or mainnet swap is part of
+the design milestone. Lightning fallback requires its own quote and user approval.

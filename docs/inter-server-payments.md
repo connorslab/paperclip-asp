@@ -8,11 +8,13 @@ Development branch: `feature/inter-asp-openark`.
 
 ## Targets
 
-1. Send from a Paperclip wallet to an Ark address on another Paperclip Ark server.
+1. Send from a Paperclip wallet to an Ark address on another Paperclip Ark server
+   through a direct atomic swap. The recipient receives destination-backed value.
 2. Support an OpenArk peer through a separate adapter when the peer implements
    compatible XBT Lightning settlement and authenticated recipient resolution.
 
-The initial settlement fallback uses the existing Lightning send and receive paths. It does not
+The primary design is [direct atomic swaps](atomic-ark-swaps.md). Lightning is an
+explicitly quoted fallback, not the primary implementation target. It does not
 accept another server's VTXOs as local VTXOs. The second target does not require
 Paperclip to replace its transaction format or its recovery model.
 
@@ -20,10 +22,10 @@ Same-server payments retain the existing arkoor path. Old wallet versions retain
 their existing APIs. Foreign addresses remain rejected until a complete adapter
 is enabled and verified. There is no silent on-chain fallback.
 
-## Low-cost receive target
+## Alternative: source-backed receipt (not selected)
 
 Distinguish address interoperability from a transfer of backing between servers.
-The preferred low-cost experiment is a multi-server recipient wallet. It resolves
+An alternative low-cost design is a multi-server recipient wallet. It resolves
 the recipient's public identity to a recipient-authorized address on the source
 server. The sender then makes an ordinary local arkoor payment. The recipient
 retains a claim on the source server, with that server's availability, expiry,
@@ -42,8 +44,8 @@ server's policy. It adds no per-payment Lightning route or server liquidity swap
 It does not remove the existing recovery allocation or later refresh costs.
 Recipients need source-server monitoring and backup support before acceptance.
 
-If the recipient requires backing on its home server, use a separately quoted
-conversion. Research a direct atomic Ark swap with prefunded inventory at both
+The selected design requires backing on the recipient's home server. Research a
+direct atomic Ark swap with prefunded inventory at both
 servers. Require verified hashlock or adaptor-signature construction, safe timeout
 margins, and recovery on both sides before implementation. Existing small-anchor
 pubkey transfer budgets must not be reused blindly for conditional swap outputs.
@@ -98,7 +100,7 @@ negative amounts, unsupported precision, and a mismatch between invoice and quot
 The sender must approve a higher price if a quote expires. No operator subsidy is
 assumed. Reserve costs must not be described as Lightning miner fees.
 
-## Settlement contract
+## Lightning fallback settlement contract
 
 The flow is source Ark HTLC, XBT Lightning payment, then destination Ark HTLC.
 The destination wallet must verify its enforceable claim and persist recovery
@@ -144,9 +146,9 @@ custody properties. Nostr transport does not enforce payment settlement.
 
 ## Implementation sequence and acceptance
 
-- [ ] Define recipient-authorized source-server addresses for low-cost receipt.
-- [ ] Add wallet multi-server balance, backup, refresh, and exit management.
-- [ ] Test ordinary transfers to a recipient whose home server is different.
+- [ ] Define and verify direct swap success and refund transaction graphs.
+- [ ] Measure default-policy recovery costs for both swap legs.
+- [ ] Add durable inventory reservations and the direct swap state machine.
 - [ ] Define discovery and quote schemas, canonical signatures, and test vectors.
 - [ ] Add disabled-by-default configured-peer discovery and capability negotiation.
 - [ ] Add authenticated recipient registration and exact-net receive quotes.
