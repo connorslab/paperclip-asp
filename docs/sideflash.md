@@ -70,7 +70,10 @@ clients as well as native Ark route selection.
 ## Local receive acknowledgement experiment
 
 The local `test/sideflash-umbrel-local` branch adds `AcknowledgeSideflash`.
-An empty `sideflash_recipient_allowlist` disables it. An enabled test server also
+By default an empty `sideflash_recipient_allowlist` disables it. Setting
+`experimental_sideflash_auto_register = true` allows verified wallet-owned
+registrations without an allowlist; this is enabled in the StartOS Sideflash test
+package starting with rc.6. An enabled test server still
 requires BOLT12 receiving, an active authenticated offer session, an offer issuer
 that matches the native recipient key, valid recipient authorization, the local
 server identity, the correct chain, revision 1 and at most 24 hours of validity.

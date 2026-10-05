@@ -420,7 +420,7 @@ impl rpc::server::ArkService for Server {
 	}
 
 	async fn acknowledge_sideflash(&self, req: tonic::Request<protos::SideflashBindingRequest>) -> Result<tonic::Response<protos::SideflashBindingResponse>, tonic::Status> {
-		if !self.config.experimental_bolt12_receive || self.config.sideflash_recipient_allowlist.is_empty() {
+		if !self.config.experimental_bolt12_receive || (!self.config.experimental_sideflash_auto_register && self.config.sideflash_recipient_allowlist.is_empty()) {
 			return Err(tonic::Status::unimplemented("Sideflash test registration is disabled"));
 		}
 		let req = req.into_inner();
@@ -437,7 +437,7 @@ impl rpc::server::ArkService for Server {
 			ark::VtxoPolicy::Pubkey(policy) => policy.user_pubkey,
 			_ => return Err(tonic::Status::invalid_argument("unsupported recipient policy")),
 		};
-		if !self.config.sideflash_recipient_allowlist.contains(&recipient) {
+		if !self.config.experimental_sideflash_auto_register && !self.config.sideflash_recipient_allowlist.contains(&recipient) {
 			return Err(tonic::Status::permission_denied("recipient is not enabled for this test"));
 		}
 		let offer = Offer::try_from(req.offer.clone()).map_err(|_| tonic::Status::invalid_argument("invalid offer"))?;

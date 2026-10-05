@@ -318,7 +318,10 @@ pub struct Config {
 	/// Enable wallet-owned reusable BOLT12 receive sessions.
 	#[serde(default)]
 	pub experimental_bolt12_receive: bool,
-	/// Test-only Sideflash acknowledgement. Empty means disabled.
+	/// Allow verified wallet-owned Sideflash registrations without a recipient allowlist.
+	#[serde(default)]
+	pub experimental_sideflash_auto_register: bool,
+	/// Sideflash recipients allowed when automatic registration is disabled.
 	#[serde(default)]
 	pub sideflash_recipient_allowlist: Vec<PublicKey>,
 	#[serde(with = "utils::serde::duration")]
