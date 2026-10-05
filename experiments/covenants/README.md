@@ -86,6 +86,11 @@ keys in an owner-only file. Use an owner-only parent directory as well.
 
 ## Tests
 
+The [October 5 public signet report](reports/2026-10-05-public-signet/REPORT.md)
+records two preauthorized refreshes, the offline command interval, invalid-spend
+checks and confirmed user recovery. It includes transaction links and raw
+evidence. The result applies to this laboratory, not the normal Ark service.
+
 Build the pinned covenant node from `connorslab/paperclip-xbt-signet`, commit
 `2f142fdd75719d23046be5b1577fc9ef280f3dc3`. Do not change an existing node/datadir.
 Set `COVENANT_NODE_SOURCE` to its checkout, `COVENANT_NODE_CONFIG` to its generated

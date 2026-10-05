@@ -1,0 +1,18 @@
+{
+  "loaded": true,
+  "size": 0,
+  "bytes": 0,
+  "usage": 32,
+  "total_fee": 0.00000000,
+  "maxmempool": 20000000,
+  "mempoolminfee": 0.00001000,
+  "minrelaytxfee": 0.00001000,
+  "incrementalrelayfee": 0.00001000,
+  "dustrelayfee": 0.00003000,
+  "dustrelayfeefloor": 0.00003000,
+  "dustdynamic": "off",
+  "unbroadcastcount": 0,
+  "fullrbf": true,
+  "rbf_policy": "always",
+  "truc_policy": "accept"
+}

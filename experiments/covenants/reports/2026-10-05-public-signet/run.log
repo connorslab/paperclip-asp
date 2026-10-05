@@ -1,0 +1,51 @@
+2026-10-05T22:56:59.815575+00:00 PASS: Pinned public signet, synchronized and funded with test coins only
+2026-10-05T22:57:09.266294+00:00 Waiting for natural signet height 254; current 253
+2026-10-05T22:57:36.670329+00:00 CONFIRMED initial round funding: d6a23a82e7b28fa4389929d2146549a907423405dc986d7d7050ce1103b9eda4 at 254
+2026-10-05T22:57:37.117702+00:00 PASS: Altered permit metadata rejected before funding
+2026-10-05T22:57:44.064264+00:00 Waiting for natural signet height 255; current 254
+2026-10-05T22:58:34.318148+00:00 CONFIRMED refresh 1 round funding: 31a7d8243c31b3082d7c98b070a893631f416e18483a18ba53701f47dfc62098 at 255
+2026-10-05T22:58:43.239541+00:00 Waiting for natural signet height 256; current 255
+2026-10-05T22:59:33.348001+00:00 CONFIRMED old balance unroll: 5176a7d2dce9223f7e2a7a1f051f4cb9f84a39db9bb0ff68f16da6fde568930d at 256
+2026-10-05T22:59:42.248784+00:00 Waiting for natural signet height 257; current 256
+2026-10-05T23:00:32.722832+00:00 CONFIRMED refresh 1 new balance unroll: 826833eebb86225a9a3ccbda3a70380713dc5e80532ed413f2c292dc57788f7c at 257
+2026-10-05T23:00:37.192488+00:00 PASS: refresh 1 rejects changed amount
+2026-10-05T23:00:38.288078+00:00 PASS: refresh 1 rejects changed destination
+2026-10-05T23:00:39.352158+00:00 PASS: refresh 1 rejects changed authorization
+2026-10-05T23:00:40.410123+00:00 PASS: refresh 1 rejects changed input-order
+2026-10-05T23:00:41.558309+00:00 PASS: refresh 1 rejects changed sighash
+2026-10-05T23:00:50.988067+00:00 Waiting for natural signet height 258; current 257
+2026-10-05T23:01:40.919546+00:00 CONFIRMED offline refresh 1 refund: 7b9c723662cbd93a7ed5b13a8a4c79a382610e1b15b0a0926303eb7aee65c2db at 258
+2026-10-05T23:01:42.057901+00:00 TEST STOPPED: 
+2026-10-05T23:03:35.881556+00:00 PASS: Refresh 1 consumed both inputs and preserved authorized allocation
+2026-10-05T23:03:35.887721+00:00 PASS: Harness resumed from confirmed first refund without replaying any send
+2026-10-05T23:03:42.913909+00:00 Waiting for natural signet height 261; current 260
+2026-10-05T23:04:33.439219+00:00 CONFIRMED refresh 2 round funding: db4f5720c23b93b567dfa96e55eccda2caa16366a822d81b6ba980f8f735668c at 261
+2026-10-05T23:04:42.671979+00:00 Waiting for natural signet height 262; current 261
+2026-10-05T23:05:33.232701+00:00 CONFIRMED refresh 2 new balance unroll: d957e9940e486a65ac17dfb50161927d273062f352ba82219e3e8ed354b4e160 at 262
+2026-10-05T23:05:37.743460+00:00 PASS: refresh 2 rejects changed amount
+2026-10-05T23:05:38.860576+00:00 PASS: refresh 2 rejects changed destination
+2026-10-05T23:05:40.003605+00:00 PASS: refresh 2 rejects changed authorization
+2026-10-05T23:05:41.132185+00:00 PASS: refresh 2 rejects changed input-order
+2026-10-05T23:05:42.246486+00:00 PASS: refresh 2 rejects changed sighash
+2026-10-05T23:05:51.104238+00:00 Waiting for natural signet height 263; current 262
+2026-10-05T23:06:41.209632+00:00 CONFIRMED offline refresh 2 refund: 57f12098d924b5ce0fa25cec5c1a863814e27d2ffc73da07e640f24ec985361f at 263
+2026-10-05T23:06:44.573757+00:00 PASS: Refresh 2 consumed both inputs and preserved authorized allocation
+2026-10-05T23:06:44.577553+00:00 PASS: Two refreshes completed with no wallet process invocation during the offline interval
+2026-10-05T23:06:45.879315+00:00 PASS: User recovery rejected before reaction window expires
+2026-10-05T23:06:46.996123+00:00 Waiting for natural signet height 269; current 263
+2026-10-05T23:07:33.247753+00:00 Waiting for natural signet height 269; current 264
+2026-10-05T23:08:31.799294+00:00 Waiting for natural signet height 269; current 265
+2026-10-05T23:09:29.939390+00:00 Waiting for natural signet height 269; current 266
+2026-10-05T23:10:28.539790+00:00 Waiting for natural signet height 269; current 267
+2026-10-05T23:11:38.323849+00:00 Waiting for natural signet height 269; current 268
+2026-10-05T23:12:37.765203+00:00 PASS: Mature old balance cannot be claimed again after refresh
+2026-10-05T23:12:38.894816+00:00 Waiting for natural signet height 273; current 269
+2026-10-05T23:13:37.466170+00:00 Waiting for natural signet height 273; current 270
+2026-10-05T23:14:36.137138+00:00 Waiting for natural signet height 273; current 271
+2026-10-05T23:15:33.848634+00:00 Waiting for natural signet height 273; current 272
+2026-10-05T23:16:34.606068+00:00 PASS: Unified recovery signature cannot be relabeled as legacy
+2026-10-05T23:16:35.778318+00:00 PASS: Valid separately generated legacy signature remains consensus-accepted; signer enforcement is not global
+2026-10-05T23:16:44.832917+00:00 Waiting for natural signet height 274; current 273
+2026-10-05T23:17:34.982742+00:00 CONFIRMED unilateral user recovery with ASP offline: bfaffcb05716390c4719baa68623e3e78b23b122ba89e5e943db9503e7c9730e at 274
+2026-10-05T23:17:36.400004+00:00 PASS: User recovered 97000 sats from persisted data with no ASP invocation
+2026-10-05T23:17:37.857098+00:00 PUBLIC SIGNET TEST PASSED

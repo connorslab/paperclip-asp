@@ -1,0 +1,447 @@
+{
+  "network": "public-signet",
+  "profile": "paperclip-signet-offline-refresh-v1",
+  "challenge": "2102396d38e3ff703be31a2d97317835f4e9645b5ae5ea2d2d1ba406afa7ab185b5fac",
+  "started_utc": "2026-10-05T22:56:54.021429+00:00",
+  "binary_sha256": {
+    "wallet": "163aac0e308c9ea0f4e2c645426a89d29edb82beeee35609d8f19213f553da56",
+    "asp": "c1686ad4bb138820b5103904c6e5438ec9d884abde6f07607cdbaa8306ab7626"
+  },
+  "wallet_source": "2409e284457f68ae3b80871dd0acb5f080568ab7",
+  "asp_code_source": "1c26035a4e8e62d79bca7b575b5657c45d23a3a2",
+  "status": "passed",
+  "checks": [
+    {
+      "test": "Pinned public signet, synchronized and funded with test coins only",
+      "passed": true,
+      "time": "2026-10-05T22:56:59.812202+00:00"
+    },
+    {
+      "test": "Altered permit metadata rejected before funding",
+      "passed": true,
+      "time": "2026-10-05T22:57:37.116410+00:00"
+    },
+    {
+      "test": "refresh 1 rejects changed amount",
+      "passed": true,
+      "time": "2026-10-05T23:00:37.189496+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of 1d5313a8fc6451ad6307865fa03d0db9f5f3cc335467eabef7c22bebd1098667 (wtxid 58589bb7043ca1ee79cb4cbc7b1c667ea075c2a513af699cdb93549b5e65626e), spending 5176a7d2dce9223f7e2a7a1f051f4cb9f84a39db9bb0ff68f16da6fde568930d:0"
+    },
+    {
+      "test": "refresh 1 rejects changed destination",
+      "passed": true,
+      "time": "2026-10-05T23:00:38.285083+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of 4a46ca2ee6ce0249b6d44ca16a418524e0f966d0ec27d119a66f96c902c1f324 (wtxid f9d8c7907ec047038a1873b36cccfdd9357c051b93a5b2b012402243e726a5b9), spending 5176a7d2dce9223f7e2a7a1f051f4cb9f84a39db9bb0ff68f16da6fde568930d:0"
+    },
+    {
+      "test": "refresh 1 rejects changed authorization",
+      "passed": true,
+      "time": "2026-10-05T23:00:39.348165+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of 7b9c723662cbd93a7ed5b13a8a4c79a382610e1b15b0a0926303eb7aee65c2db (wtxid 66b8979dea14d2736c8ec4deb4820dd3e00386625481dede0335961d4f1a3b65), spending 5176a7d2dce9223f7e2a7a1f051f4cb9f84a39db9bb0ff68f16da6fde568930d:0"
+    },
+    {
+      "test": "refresh 1 rejects changed input-order",
+      "passed": true,
+      "time": "2026-10-05T23:00:40.406178+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of 5ac36bf4fa63ddc4bcd7bf40451bc84b454beb46815dccb7e6b2ae4e377077d4 (wtxid 76140500c8fcf0d3aaaea1f5c797afb875bd6f0480dcda1f145d6d7fe7f4565d), spending 826833eebb86225a9a3ccbda3a70380713dc5e80532ed413f2c292dc57788f7c:0"
+    },
+    {
+      "test": "refresh 1 rejects changed sighash",
+      "passed": true,
+      "time": "2026-10-05T23:00:41.553321+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of 7b9c723662cbd93a7ed5b13a8a4c79a382610e1b15b0a0926303eb7aee65c2db (wtxid 8c041881740911a6b1f705d40185dc4b7682a49a7297fd952e894d4763ecf3bb), spending 5176a7d2dce9223f7e2a7a1f051f4cb9f84a39db9bb0ff68f16da6fde568930d:0"
+    },
+    {
+      "test": "Refresh 1 consumed both inputs and preserved authorized allocation",
+      "passed": true,
+      "time": "2026-10-05T23:03:35.877571+00:00",
+      "amount_sats": 99000
+    },
+    {
+      "test": "Harness resumed from confirmed first refund without replaying any send",
+      "passed": true,
+      "time": "2026-10-05T23:03:35.883492+00:00"
+    },
+    {
+      "test": "refresh 2 rejects changed amount",
+      "passed": true,
+      "time": "2026-10-05T23:05:37.739035+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of 0aa22054d84d3de76b846d1008b898c4f0ced3fbd5d0fdb5be6be977ba709d86 (wtxid a3ecb3f21890155339e2c80f3fdcd39b4f154e51ee67abb7892a7717239fd08d), spending 7b9c723662cbd93a7ed5b13a8a4c79a382610e1b15b0a0926303eb7aee65c2db:0"
+    },
+    {
+      "test": "refresh 2 rejects changed destination",
+      "passed": true,
+      "time": "2026-10-05T23:05:38.857579+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of 2afa16da494691ff7cfa3e4ed03aa64b731e736d7e0063110fba2ef05fd3c81e (wtxid bec05b4c5d968d8c798d4029e3ce520a7797b199188cfbebb78a4c6db06a4168), spending 7b9c723662cbd93a7ed5b13a8a4c79a382610e1b15b0a0926303eb7aee65c2db:0"
+    },
+    {
+      "test": "refresh 2 rejects changed authorization",
+      "passed": true,
+      "time": "2026-10-05T23:05:39.998234+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of 57f12098d924b5ce0fa25cec5c1a863814e27d2ffc73da07e640f24ec985361f (wtxid dc33aea1ac6a32165271c9290f47c5f3c78b7bc7bbfc7620e89ab3debb3f9bd4), spending 7b9c723662cbd93a7ed5b13a8a4c79a382610e1b15b0a0926303eb7aee65c2db:0"
+    },
+    {
+      "test": "refresh 2 rejects changed input-order",
+      "passed": true,
+      "time": "2026-10-05T23:05:41.129188+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of 0c27edc3a098fb7fecc29910218b5e76083fe6a215ea71afc7f681d54477cfde (wtxid a69d33a015877f7f783826e32684cbe411459afa2a08403120082e120d937a1c), spending d957e9940e486a65ac17dfb50161927d273062f352ba82219e3e8ed354b4e160:0"
+    },
+    {
+      "test": "refresh 2 rejects changed sighash",
+      "passed": true,
+      "time": "2026-10-05T23:05:42.242564+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of 57f12098d924b5ce0fa25cec5c1a863814e27d2ffc73da07e640f24ec985361f (wtxid ba9df2b8341870a9c643740965c9f2288f4d4ea1317d33ffef6b81fe14e5f5ef), spending 7b9c723662cbd93a7ed5b13a8a4c79a382610e1b15b0a0926303eb7aee65c2db:0"
+    },
+    {
+      "test": "Refresh 2 consumed both inputs and preserved authorized allocation",
+      "passed": true,
+      "time": "2026-10-05T23:06:44.569312+00:00",
+      "amount_sats": 98000
+    },
+    {
+      "test": "Two refreshes completed with no wallet process invocation during the offline interval",
+      "passed": true,
+      "time": "2026-10-05T23:06:44.573757+00:00"
+    },
+    {
+      "test": "User recovery rejected before reaction window expires",
+      "passed": true,
+      "time": "2026-10-05T23:06:45.875321+00:00",
+      "rejection": "non-final",
+      "details": "non-final"
+    },
+    {
+      "test": "Mature old balance cannot be claimed again after refresh",
+      "passed": true,
+      "time": "2026-10-05T23:12:37.759877+00:00",
+      "rejection": "missing-inputs",
+      "details": null
+    },
+    {
+      "test": "Unified recovery signature cannot be relabeled as legacy",
+      "passed": true,
+      "time": "2026-10-05T23:16:34.599680+00:00",
+      "rejection": "mempool-script-verify-flag-failed (Invalid Schnorr signature)",
+      "details": "mempool-script-verify-flag-failed (Invalid Schnorr signature), input 0 of bfaffcb05716390c4719baa68623e3e78b23b122ba89e5e943db9503e7c9730e (wtxid 7062197acb4dfc48d12407f5f68a52b64864f58376aeaf4eedcc10b47d913edf), spending 57f12098d924b5ce0fa25cec5c1a863814e27d2ffc73da07e640f24ec985361f:0"
+    },
+    {
+      "test": "Valid separately generated legacy signature remains consensus-accepted; signer enforcement is not global",
+      "passed": true,
+      "time": "2026-10-05T23:16:35.774064+00:00"
+    },
+    {
+      "test": "User recovered 97000 sats from persisted data with no ASP invocation",
+      "passed": true,
+      "time": "2026-10-05T23:17:36.395003+00:00"
+    }
+  ],
+  "transactions": [
+    {
+      "step": "initial round funding",
+      "txid": "d6a23a82e7b28fa4389929d2146549a907423405dc986d7d7050ce1103b9eda4",
+      "submitted_utc": "2026-10-05T22:57:04.928544+00:00",
+      "block": "4193b4945ef2baed35329da18b0f55de020f05e7fad62ea7d87da88cf55ed840",
+      "height": 254,
+      "vsize": 156,
+      "confirmed_utc": "2026-10-05T22:57:36.666376+00:00",
+      "fee_sats": 156
+    },
+    {
+      "step": "refresh 1 round funding",
+      "txid": "31a7d8243c31b3082d7c98b070a893631f416e18483a18ba53701f47dfc62098",
+      "submitted_utc": "2026-10-05T22:57:39.628177+00:00",
+      "block": "57c7c31b4bdf5eabd4338b336f0050127ad997345ddfdd4824747c1119982327",
+      "height": 255,
+      "vsize": 234,
+      "confirmed_utc": "2026-10-05T22:58:34.316127+00:00",
+      "fee_sats": 234
+    },
+    {
+      "step": "old balance unroll",
+      "txid": "5176a7d2dce9223f7e2a7a1f051f4cb9f84a39db9bb0ff68f16da6fde568930d",
+      "submitted_utc": "2026-10-05T22:58:38.869045+00:00",
+      "block": "46f9a5fab8b49cfdc589ea280fffe10eec565e590a1ce6f0ad2588395d095d20",
+      "height": 256,
+      "vsize": 121,
+      "confirmed_utc": "2026-10-05T22:59:33.343016+00:00",
+      "fee_sats": 1000
+    },
+    {
+      "step": "refresh 1 new balance unroll",
+      "txid": "826833eebb86225a9a3ccbda3a70380713dc5e80532ed413f2c292dc57788f7c",
+      "submitted_utc": "2026-10-05T22:59:37.853156+00:00",
+      "block": "2fd168ecd2d6a379294bc43482d0e152d904b75076ff9b55bb26a3f88991a4bd",
+      "height": 257,
+      "vsize": 121,
+      "confirmed_utc": "2026-10-05T23:00:32.718853+00:00",
+      "fee_sats": 1000
+    },
+    {
+      "step": "offline refresh 1 refund",
+      "txid": "7b9c723662cbd93a7ed5b13a8a4c79a382610e1b15b0a0926303eb7aee65c2db",
+      "submitted_utc": "2026-10-05T23:00:46.068483+00:00",
+      "block": "4818ec20fa14e61712694e0dfcd573fde08c0c5c4689640a107af75c65bd50a2",
+      "height": 258,
+      "vsize": 313,
+      "confirmed_utc": "2026-10-05T23:01:40.916540+00:00",
+      "fee_sats": 1000
+    },
+    {
+      "step": "refresh 2 round funding",
+      "txid": "db4f5720c23b93b567dfa96e55eccda2caa16366a822d81b6ba980f8f735668c",
+      "submitted_utc": "2026-10-05T23:03:38.393839+00:00",
+      "block": "2524c68006c612e1a1f39109ba441687dbb788d5d225e880de301952df945d57",
+      "height": 261,
+      "vsize": 234,
+      "confirmed_utc": "2026-10-05T23:04:33.436168+00:00",
+      "fee_sats": 234
+    },
+    {
+      "step": "refresh 2 new balance unroll",
+      "txid": "d957e9940e486a65ac17dfb50161927d273062f352ba82219e3e8ed354b4e160",
+      "submitted_utc": "2026-10-05T23:04:38.307599+00:00",
+      "block": "41ba63b64684f1456abdc5925243959b50a7cfa56ec083ae76bb2bca67a4e472",
+      "height": 262,
+      "vsize": 121,
+      "confirmed_utc": "2026-10-05T23:05:33.229443+00:00",
+      "fee_sats": 1000
+    },
+    {
+      "step": "offline refresh 2 refund",
+      "txid": "57f12098d924b5ce0fa25cec5c1a863814e27d2ffc73da07e640f24ec985361f",
+      "submitted_utc": "2026-10-05T23:05:46.721464+00:00",
+      "block": "1e40344a9ceaea5e36931560c9d4b576d1d81c207b16d2e5c5963c64326f3ebc",
+      "height": 263,
+      "vsize": 313,
+      "confirmed_utc": "2026-10-05T23:06:41.203889+00:00",
+      "fee_sats": 1000
+    },
+    {
+      "step": "unilateral user recovery with ASP offline",
+      "txid": "bfaffcb05716390c4719baa68623e3e78b23b122ba89e5e943db9503e7c9730e",
+      "submitted_utc": "2026-10-05T23:16:40.257195+00:00",
+      "block": "5b6913ff7090859a72522201b1a1a6c7eceb982eb990f2a4ce77aee61f9e03b3",
+      "height": 274,
+      "vsize": 126,
+      "confirmed_utc": "2026-10-05T23:17:34.977686+00:00",
+      "fee_sats": 1000
+    }
+  ],
+  "calls": [
+    {
+      "role": "wallet",
+      "command": "pubkey",
+      "time": "2026-10-05T22:56:59.898331+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "wallet",
+      "command": "pubkey",
+      "time": "2026-10-05T22:56:59.995412+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "wallet",
+      "command": "pubkey",
+      "time": "2026-10-05T22:57:00.088191+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "wallet",
+      "command": "pubkey",
+      "time": "2026-10-05T22:57:00.189784+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "wallet",
+      "command": "pubkey",
+      "time": "2026-10-05T22:57:00.289209+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "asp",
+      "command": "round",
+      "time": "2026-10-05T22:57:02.612416+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "asp",
+      "command": "round",
+      "time": "2026-10-05T22:57:36.724928+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "wallet",
+      "command": "authorize",
+      "time": "2026-10-05T22:57:36.820528+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "wallet",
+      "command": "authorize",
+      "time": "2026-10-05T22:57:36.921280+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "wallet",
+      "command": "claim",
+      "time": "2026-10-05T22:57:37.020065+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "asp",
+      "command": "verify",
+      "time": "2026-10-05T22:57:37.115438+00:00",
+      "wallet_offline": false,
+      "asp_offline": false,
+      "exit": 1
+    },
+    {
+      "role": "asp",
+      "command": "verify",
+      "time": "2026-10-05T22:57:37.209064+00:00",
+      "wallet_offline": true,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "asp",
+      "command": "round",
+      "time": "2026-10-05T22:57:37.303362+00:00",
+      "wallet_offline": true,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "asp",
+      "command": "round",
+      "time": "2026-10-05T22:58:34.375220+00:00",
+      "wallet_offline": true,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "asp",
+      "command": "refund",
+      "time": "2026-10-05T23:00:32.736238+00:00",
+      "wallet_offline": true,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "asp",
+      "command": "verify",
+      "time": "2026-10-05T23:03:35.950196+00:00",
+      "wallet_offline": true,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "asp",
+      "command": "round",
+      "time": "2026-10-05T23:03:36.060804+00:00",
+      "wallet_offline": true,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "asp",
+      "command": "round",
+      "time": "2026-10-05T23:04:33.495511+00:00",
+      "wallet_offline": true,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "asp",
+      "command": "refund",
+      "time": "2026-10-05T23:05:33.247960+00:00",
+      "wallet_offline": true,
+      "asp_offline": false,
+      "exit": 0
+    },
+    {
+      "role": "wallet",
+      "command": "claim",
+      "time": "2026-10-05T23:06:44.644789+00:00",
+      "wallet_offline": false,
+      "asp_offline": true,
+      "exit": 0
+    },
+    {
+      "role": "wallet",
+      "command": "claim",
+      "time": "2026-10-05T23:06:44.748289+00:00",
+      "wallet_offline": false,
+      "asp_offline": true,
+      "exit": 0
+    }
+  ],
+  "start_height": 253,
+  "node_version": "/Satoshi:29.4.2/Knots:20260508.paperclip-signet1-g2f142fdd75719d23046be5b1577fc9ef280f3dc3/",
+  "states": [
+    {
+      "owner": "61a14ba9ac73f84b91235818f2d64ebde706336447a0f1eb0060f8474d52a599",
+      "server": "c4c5a7215f4217d4641d5e50822a225ea6f7548cf9b26a47fc26f08f7b8f1865",
+      "amount_sat": 100000,
+      "expiry": 263,
+      "exit_delay": 6
+    },
+    {
+      "owner": "3c88f6971c5c730cc99308caf429a07d63c2e2a5c9fd9e9de7c28ed217b21327",
+      "server": "c4c5a7215f4217d4641d5e50822a225ea6f7548cf9b26a47fc26f08f7b8f1865",
+      "amount_sat": 99000,
+      "expiry": 265,
+      "exit_delay": 6
+    },
+    {
+      "owner": "b46bb97c104356f96f39bd0d1213d7bb5b673bae77ed65039ee310a3e0e090d1",
+      "server": "c4c5a7215f4217d4641d5e50822a225ea6f7548cf9b26a47fc26f08f7b8f1865",
+      "amount_sat": 98000,
+      "expiry": 267,
+      "exit_delay": 6
+    }
+  ],
+  "wallet_offline_start": "2026-10-05T22:57:37.119779+00:00",
+  "harness_interruptions": [
+    {
+      "time": "2026-10-05T23:01:42.053431+00:00",
+      "reason": "CLI empty response for spent output was not normalized to None",
+      "resume": "Reconcile confirmed first refund; do not replay funding or refund sends"
+    }
+  ],
+  "wallet_offline_end": "2026-10-05T23:06:44.573757+00:00",
+  "asp_offline_start": "2026-10-05T23:06:44.588940+00:00",
+  "end_height": 274,
+  "completed_utc": "2026-10-05T23:17:37.852534+00:00"
+}
