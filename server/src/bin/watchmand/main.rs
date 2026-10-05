@@ -34,6 +34,9 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum Command {
+	/// Run the isolated test-network covenant watcher.
+	#[cfg(feature = "experimental-covenants")]
+	CovenantService { #[arg(long)] service_config: PathBuf },
 	/// Start the watchman server
 	#[command()]
 	Start,
@@ -60,12 +63,18 @@ async fn main() {
 
 async fn inner_main() -> anyhow::Result<()> {
 	let cli = Cli::parse();
+	#[cfg(feature = "experimental-covenants")]
+	if let Command::CovenantService { service_config } = &cli.command {
+		return server::covenant_service::run(service_config, server::covenant_service::Role::Watchman);
+	}
 
 	let cfg = Config::load(cli.config.as_ref().context("no config file path provided")?)
 		.context("error loading config file")?;
 	cfg.validate().expect("invalid configuration");
 
 	match cli.command {
+		#[cfg(feature = "experimental-covenants")]
+		Command::CovenantService { .. } => unreachable!("handled before normal configuration"),
 		Command::Start => {
 			if let Err(e) = Daemon::run(cfg).await {
 				eprintln!("Error from server {:?}", e);
@@ -77,4 +86,3 @@ async fn inner_main() -> anyhow::Result<()> {
 
 	Ok(())
 }
-

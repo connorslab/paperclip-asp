@@ -48,6 +48,12 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum Command {
+	/// Run the isolated test-network covenant scheduler.
+	#[cfg(feature = "experimental-covenants")]
+	CovenantService { #[arg(long)] service_config: PathBuf },
+	/// Register signed permits backed by a confirmed test output.
+	#[cfg(feature = "experimental-covenants")]
+	CovenantEnroll { #[arg(long)] service_config: PathBuf, #[arg(long)] request: PathBuf },
 	/// Isolated covenant laboratory; reads test-only JSON from stdin, never a wallet database.
 	#[cfg(feature = "experimental-covenants")]
 	CovenantLab {
@@ -335,6 +341,12 @@ async fn main() {
 async fn inner_main() -> anyhow::Result<()> {
 	let cli = Cli::parse();
 	#[cfg(feature = "experimental-covenants")]
+	match &cli.command {
+		Command::CovenantService { service_config } => return server::covenant_service::run(service_config, server::covenant_service::Role::Asp),
+		Command::CovenantEnroll { service_config, request } => return server::covenant_service::enroll(service_config, request),
+		_ => {},
+	}
+	#[cfg(feature = "experimental-covenants")]
 	if let Command::CovenantLab { experimental_signet } = &cli.command {
 		if !experimental_signet { anyhow::bail!("Requires --experimental-signet"); }
 		return bitcoin_ext::covenant_io::execute("asp").map_err(anyhow::Error::msg);
@@ -393,6 +405,8 @@ async fn inner_main() -> anyhow::Result<()> {
 	tracing_subscriber::fmt::init();
 
 	match cli.command {
+		#[cfg(feature = "experimental-covenants")]
+		Command::CovenantService { .. } | Command::CovenantEnroll { .. } => unreachable!("handled before normal configuration"),
 		#[cfg(feature = "experimental-covenants")]
 		Command::CovenantLab { .. } => unreachable!("handled before loading production configuration"),
 		Command::CheckConfig { .. } => unreachable!(),

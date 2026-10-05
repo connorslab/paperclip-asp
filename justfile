@@ -31,3 +31,10 @@ covenant-unit:
 covenant-int:
 	cargo build --locked -p bark-bitcoin-ext --no-default-features --features experimental-covenants --examples
 	bash experiments/covenants/test.sh
+
+covenant-services:
+	cargo build --locked -p bark-server --features experimental-covenants --bin paperclip-asp --bin paperclip-watchman
+	PYTHONPATH="$COVENANT_NODE_SOURCE/test/functional" python3 experiments/covenants/test_services.py --descriptors --configfile="$COVENANT_NODE_CONFIG"
+
+covenant-data-policy:
+	PYTHONPATH="$COVENANT_NODE_SOURCE/test/functional" python3 experiments/covenants/test_data_policy.py --configfile="$COVENANT_NODE_CONFIG"

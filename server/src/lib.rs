@@ -17,6 +17,8 @@ pub mod rpcserver;
 pub mod vtxopool;
 pub mod wallet;
 pub mod watchman;
+#[cfg(feature = "experimental-covenants")]
+pub mod covenant_service;
 
 pub(crate) mod flux;
 pub mod system;
