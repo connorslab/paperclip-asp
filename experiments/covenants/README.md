@@ -31,6 +31,23 @@ https://delvingbitcoin.org/t/evolving-the-ark-protocol-using-ctv-and-csfs/1602
 It substitutes the signet's BIP446 TEMPLATEHASH for CTV. This is an experiment,
 not a claim of equivalence or a completed security review of either protocol.
 
+## Public experimental branches
+
+Both repositories use `experiment/covenant-offline-refresh`:
+
+- ASP: https://github.com/connorslab/paperclip-asp/tree/experiment/covenant-offline-refresh
+- Wallet: https://github.com/connorslab/paperclip-wallet-app/tree/experiment/covenant-offline-refresh
+
+```sh
+git clone --branch experiment/covenant-offline-refresh https://github.com/connorslab/paperclip-asp.git
+git clone --branch experiment/covenant-offline-refresh https://github.com/connorslab/paperclip-wallet-app.git
+```
+
+Use the laboratory commands below, not the normal wallet/ASP startup commands.
+There is no public covenant ASP service or automatic signet wallet UI yet.
+The reproducible lifecycle driver uses a fresh private regtest node; it does
+not connect to the mainnet ASP or broadcast onto the public signet.
+
 ## Build and run
 
 Use the repository's Nix development environment. The feature is off by default.
