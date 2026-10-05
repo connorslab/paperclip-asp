@@ -1,5 +1,7 @@
 # Paperclip ASP
 
+> An opt-in [Bitcoin covenant laboratory](experiments/covenants/README.md) tests offline refreshes. It uses separate test state and does not upgrade normal Ark balances.
+
 Experimental XBT Ark Service Provider based on Bark by Second and the Bark
 contributors. This repository contains the server and its shared dependencies.
 The wallet and web interface are in [paperclip-wallet-app](https://github.com/connorslab/paperclip-wallet-app).

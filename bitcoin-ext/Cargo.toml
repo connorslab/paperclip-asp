@@ -11,6 +11,7 @@ edition = "2021"
 name = "bitcoin_ext"
 
 [features]
+experimental-covenants = []
 default = ["bdk", "rpc", "all-related-utxos"]
 
 bdk = ["bdk_wallet", "log", "rand_core"]
@@ -55,3 +56,11 @@ bdk_wallet = { version = "3.0.0", features = ["test-utils"] }
 
 [lints.clippy]
 all = "allow"
+
+[[example]]
+name = "covenant-wallet"
+required-features = ["experimental-covenants"]
+
+[[example]]
+name = "covenant-asp"
+required-features = ["experimental-covenants"]

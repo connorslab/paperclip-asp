@@ -48,6 +48,12 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum Command {
+	/// Isolated covenant laboratory; reads test-only JSON from stdin, never a wallet database.
+	#[cfg(feature = "experimental-covenants")]
+	CovenantLab {
+		#[arg(long, required = true)]
+		experimental_signet: bool,
+	},
 	/// Create and configure the server
 	#[command()]
 	Create,
@@ -328,6 +334,12 @@ async fn main() {
 
 async fn inner_main() -> anyhow::Result<()> {
 	let cli = Cli::parse();
+	#[cfg(feature = "experimental-covenants")]
+	if let Command::CovenantLab { experimental_signet } = &cli.command {
+		if !experimental_signet { anyhow::bail!("Requires --experimental-signet"); }
+		return bitcoin_ext::covenant_io::execute("asp").map_err(anyhow::Error::msg);
+	}
+
 	let config_path: Option<&PathBuf> = cli.config.as_ref();
 
 	if let Command::CheckConfig { path, watchman } = cli.command {
@@ -381,6 +393,8 @@ async fn inner_main() -> anyhow::Result<()> {
 	tracing_subscriber::fmt::init();
 
 	match cli.command {
+		#[cfg(feature = "experimental-covenants")]
+		Command::CovenantLab { .. } => unreachable!("handled before loading production configuration"),
 		Command::CheckConfig { .. } => unreachable!(),
 		Command::Rpc { .. } => unreachable!(),
 		Command::Start => unreachable!(),

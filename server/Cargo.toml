@@ -98,6 +98,7 @@ json-subscriber.workspace = true
 console-subscriber = { version = "0.5.0", optional = true }
 
 [features]
+experimental-covenants = ["bark-bitcoin-ext/experimental-covenants"]
 tokio-console = ["dep:console-subscriber", "tokio/tracing"]
 
 [dev-dependencies]

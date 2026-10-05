@@ -486,3 +486,9 @@ mod test {
 	}
 }
 
+
+#[cfg(feature = "experimental-covenants")]
+pub mod covenant;
+
+#[cfg(feature = "experimental-covenants")]
+pub mod covenant_io;

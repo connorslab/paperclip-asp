@@ -24,3 +24,10 @@ int-pruned-lifecycle:
 
 int-bolt12:
 	bash scripts/test-bolt12.sh
+
+covenant-unit:
+	cargo test --locked -p bark-bitcoin-ext --no-default-features --features experimental-covenants --lib covenant
+
+covenant-int:
+	cargo build --locked -p bark-bitcoin-ext --no-default-features --features experimental-covenants --examples
+	bash experiments/covenants/test.sh
