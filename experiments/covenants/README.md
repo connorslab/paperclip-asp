@@ -50,16 +50,16 @@ not connect to the mainnet ASP or broadcast onto the public signet.
 
 ## Build and run
 
-Use the repository's Nix development environment. The feature is off by default.
+Run `nix develop` in each repository before building. The feature is off by default.
 
 ```sh
 # In the ASP repository
 cargo build --locked -p bark-server --features experimental-covenants --bin paperclip-asp
-paperclip-asp covenant-lab --experimental-signet < test-request.json
+./target/debug/paperclip-asp covenant-lab --experimental-signet < test-request.json
 
 # In the wallet repository
 cargo build --locked -p bark-cli --features experimental-covenants --bin paperclip-wallet
-paperclip-wallet covenant-lab --experimental-signet < test-request.json
+./target/debug/paperclip-wallet covenant-lab --experimental-signet < test-request.json
 ```
 
 These commands run before opening normal configuration, wallet databases or
