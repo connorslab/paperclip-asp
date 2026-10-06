@@ -1,0 +1,24 @@
+warning: Git tree '/home/connor/paperclip-ark-local-test/paperclip-system/paperclip-wallet' is dirty
+warning: ignoring untrusted flake configuration setting 'extra-substituters'.
+Pass '--accept-flake-config' to trust it
+warning: ignoring untrusted flake configuration setting 'extra-trusted-public-keys'.
+Pass '--accept-flake-config' to trust it
+PYTHONPATH="$COVENANT_NODE_SOURCE/test/functional" python3 experiments/covenants/test_data_policy.py --configfile="$COVENANT_NODE_CONFIG"
+2026-10-05T23:54:50.767000Z TestFramework (INFO): PRNG seed is: 4326349715369129907
+2026-10-05T23:54:50.767000Z TestFramework (INFO): Initializing test directory /tmp/nix-shell.47N1r1/bitcoin_func_test_4m6vhzfk
+2026-10-05T23:54:51.053000Z TestFramework (INFO): csfs-witness 32 bytes: True
+2026-10-05T23:54:51.060000Z TestFramework (INFO): csfs-witness 80 bytes: True
+2026-10-05T23:54:51.067000Z TestFramework (INFO): csfs-witness 81 bytes: False
+2026-10-05T23:54:51.074000Z TestFramework (INFO): csfs-script 80 bytes: True
+2026-10-05T23:54:51.082000Z TestFramework (INFO): csfs-script 256 bytes: True
+2026-10-05T23:54:51.089000Z TestFramework (INFO): csfs-script 257 bytes: False
+2026-10-05T23:54:51.094000Z TestFramework (INFO): sha256-witness 32 bytes: True
+2026-10-05T23:54:51.100000Z TestFramework (INFO): sha256-witness 80 bytes: True
+2026-10-05T23:54:51.105000Z TestFramework (INFO): sha256-witness 81 bytes: False
+2026-10-05T23:54:51.110000Z TestFramework (INFO): sha256-script 80 bytes: True
+2026-10-05T23:54:51.115000Z TestFramework (INFO): sha256-script 256 bytes: True
+2026-10-05T23:54:51.121000Z TestFramework (INFO): sha256-script 257 bytes: False
+2026-10-05T23:54:51.171000Z TestFramework (INFO): Stopping nodes
+2026-10-05T23:54:51.272000Z TestFramework (INFO): Cleaning up /tmp/nix-shell.47N1r1/bitcoin_func_test_4m6vhzfk on exit
+2026-10-05T23:54:51.272000Z TestFramework (INFO): Tests successful
+POLICY_EXIT=0

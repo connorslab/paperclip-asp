@@ -1,0 +1,16 @@
+{
+  "dedicated_wallet_unloaded": true,
+  "private_wallet_backups_verified": true,
+  "balances": {
+    "mine": {
+      "trusted": 0.00796298,
+      "untrusted_pending": 0.0,
+      "immature": 0.0
+    },
+    "lastprocessedblock": {
+      "hash": "07bb8d06d58ca109d81611932f86f380fadd6501dc22893f16e55e1ffd59c23b",
+      "height": 333
+    }
+  },
+  "production_services_restarted": false
+}

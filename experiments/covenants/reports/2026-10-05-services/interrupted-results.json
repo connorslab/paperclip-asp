@@ -1,0 +1,96 @@
+{
+  "network": "public-signet",
+  "profile": "paperclip-signet-offline-refresh-v1",
+  "started_utc": "2026-10-05T23:48:24.028599+00:00",
+  "status": "failed",
+  "checks": [
+    {
+      "test": "two native service processes: ASP independently funds both preauthorized refreshes; watchman remains idle before stale exit",
+      "passed": true,
+      "utc": "2026-10-05T23:55:37.372433+00:00"
+    },
+    {
+      "test": "watchman autonomously observes and settles stale exit through both permits while wallet remains offline",
+      "passed": true,
+      "utc": "2026-10-05T23:56:37.130759+00:00"
+    },
+    {
+      "test": "both services restart from their journal without issuing duplicate transactions",
+      "passed": true,
+      "utc": "2026-10-05T23:56:57.299894+00:00"
+    }
+  ],
+  "transactions": [
+    {
+      "step": "dedicated test reserve",
+      "txid": "7bca7de2c00631a9e4a6f8204ad096b3a5adc7f2404a27c38c5280ecaca34048"
+    },
+    {
+      "step": "original backing",
+      "txid": "92d02319ac798c7aeecbb5505501cd172121c83cac5529e0fc402491663a7110"
+    },
+    {
+      "step": "stale user unroll",
+      "txid": "efe2ab703dea2daf655480f0a23d7aabce085b96bebc52a74f62d403795e9af4"
+    },
+    {
+      "step": "round 1 funding_hex",
+      "txid": "2b748a6ed701a40fed7449cfafbd27f063e3402704706b4bf216b2ad74cc4686"
+    },
+    {
+      "step": "round 1 unroll_hex",
+      "txid": "9ebc0250bcd8feee887da459f29c4aff1e0cd40b13fc1a3572d8b21c073c4470"
+    },
+    {
+      "step": "round 1 refund_hex",
+      "txid": "c5c3a8d74511f8e6d85ced5290986f1790b526f8d037172118fafe6f9ed71a3a"
+    },
+    {
+      "step": "round 2 funding_hex",
+      "txid": "e6e6a7e3067fbc78c1da05583d5409789b0ba2d1afa0136dbd1d17dc6e37efdc"
+    },
+    {
+      "step": "round 2 unroll_hex",
+      "txid": "1b14c94b9fe7029adfe039abbb191569bf94683b171f7d625971ec158affb6af"
+    },
+    {
+      "step": "round 2 refund_hex",
+      "txid": "0e64edc73cc1cfe2bbcf05be5fe9ee68df66757a5292c6ed67a0e012f3659992"
+    }
+  ],
+  "start_height": 304,
+  "node_services_before": "Id=xbt-signet.service\nActiveEnterTimestamp=Mon 2026-10-05 20:36:01 UTC\nMainPID=337435\n\nId=xbt-signet-miner.service\nActiveEnterTimestamp=Mon 2026-10-05 20:36:01 UTC\nMainPID=337437\n\nId=bitcoin-knots.service\nActiveEnterTimestamp=Mon 2026-10-05 03:02:52 UTC\nMainPID=18253\n",
+  "binary_sha256": {
+    "wallet": "163aac0e308c9ea0f4e2c645426a89d29edb82beeee35609d8f19213f553da56",
+    "asp": "5b86d732bda6ddaf04a01952672e6de96afe8d58584009018d2530e16e22ef31",
+    "watchman": "99e399e0a19f72e4f0934fd011739f4f6c433059986b43d854ed450f38abb0fd"
+  },
+  "txindex": {},
+  "states": [
+    {
+      "owner": "5d16a2a831db46eb4caa79b3c3d062d8fc4031bfce823a7c3ccbcc306cf2d4da",
+      "server": "1a12b65237583f5b36386415b1ba282f53ec399be1e54f21b640a836a8647572",
+      "amount_sat": 100000,
+      "expiry": 322,
+      "exit_delay": 6
+    },
+    {
+      "owner": "d24f1ef16b4a3963d8c237db601f85426bf05ee3bdf90caab15077b892553a95",
+      "server": "1a12b65237583f5b36386415b1ba282f53ec399be1e54f21b640a836a8647572",
+      "amount_sat": 99000,
+      "expiry": 324,
+      "exit_delay": 6
+    },
+    {
+      "owner": "932824371e0ba2d56c527a2489d2a5955caf47f975f82c1d6c74f94013929976",
+      "server": "1a12b65237583f5b36386415b1ba282f53ec399be1e54f21b640a836a8647572",
+      "amount_sat": 98000,
+      "expiry": 326,
+      "exit_delay": 6
+    }
+  ],
+  "wallet_offline_from": "2026-10-05T23:50:33.555061+00:00",
+  "services_stopped_utc": "2026-10-05T23:56:57.368645+00:00",
+  "wallet_offline_until": "2026-10-05T23:56:57.368645+00:00",
+  "error": "Remote command failed: An error occurred: Invalid experimental request; no signing result produced\n"
+}

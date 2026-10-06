@@ -1,0 +1,136 @@
+warning: Git tree '/home/connor/paperclip-ark-local-test/paperclip-system/paperclip-wallet' is dirty
+warning: ignoring untrusted flake configuration setting 'extra-substituters'.
+Pass '--accept-flake-config' to trust it
+warning: ignoring untrusted flake configuration setting 'extra-trusted-public-keys'.
+Pass '--accept-flake-config' to trust it
+cargo check --locked --workspace --tests --examples
+   Compiling bitcoin v0.32.9 (/home/connor/paperclip-public-covenant-wallet/vendor/bitcoin)
+    Checking bdk_core v0.6.3
+    Checking miniscript v12.3.6
+    Checking bitcoincore-rpc-json v0.19.0 (/home/connor/paperclip-public-covenant-wallet/vendor/bitcoincore-rpc-json)
+    Checking bitcoincore-rpc v0.19.0
+    Checking corepc-types v0.13.0 (/home/connor/paperclip-public-covenant-wallet/vendor/corepc-types)
+    Checking bdk_chain v0.23.3
+    Checking bdk_wallet v3.1.0
+    Checking bdk_bitcoind_rpc v0.22.0
+    Checking lightning-types v0.3.1 (/home/connor/paperclip-public-covenant-wallet/vendor/lightning-types)
+warning: unexpected `cfg` condition name: `fuzzing`
+  --> vendor/lightning-types/src/lib.rs:17:17
+   |
+17 | #![cfg_attr(not(fuzzing), deny(missing_docs))]
+   |                 ^^^^^^^
+   |
+   = help: expected names are: `docsrs`, `feature`, and `test` and 31 more
+   = help: consider using a Cargo feature instead
+   = help: or consider adding in `Cargo.toml` the `check-cfg` lint config for the lint:
+            [lints.rust]
+            unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+   = help: or consider adding `println!("cargo::rustc-check-cfg=cfg(fuzzing)");` to the top of the `build.rs`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unexpected `cfg` condition name: `fuzzing`
+   --> vendor/lightning-types/src/features.rs:813:7
+    |
+813 | #[cfg(fuzzing)]
+    |       ^^^^^^^
+    |
+    = help: consider using a Cargo feature instead
+    = help: or consider adding in `Cargo.toml` the `check-cfg` lint config for the lint:
+             [lints.rust]
+             unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+    = help: or consider adding `println!("cargo::rustc-check-cfg=cfg(fuzzing)");` to the top of the `build.rs`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition name: `fuzzing`
+   --> vendor/lightning-types/src/features.rs:820:11
+    |
+820 | #[cfg(not(fuzzing))]
+    |           ^^^^^^^
+    |
+    = help: consider using a Cargo feature instead
+    = help: or consider adding in `Cargo.toml` the `check-cfg` lint config for the lint:
+             [lints.rust]
+             unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+    = help: or consider adding `println!("cargo::rustc-check-cfg=cfg(fuzzing)");` to the top of the `build.rs`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: `lightning-types` (lib) generated 3 warnings
+    Checking lightning-invoice v0.34.0
+    Checking lightning v0.2.2
+    Checking bitcoind-async-client v0.15.0
+    Checking bark-bitcoin-ext v0.7.1 (/home/connor/paperclip-public-covenant-wallet/bitcoin-ext)
+    Checking esplora-client v0.12.3
+    Checking bdk_esplora v0.22.2
+    Checking lnurl-rs v0.10.0
+    Checking ark-lib v0.7.1 (/home/connor/paperclip-public-covenant-wallet/lib)
+    Checking bip321 v0.4.0 (/home/connor/paperclip-public-covenant-wallet/bip321)
+warning: unused import: `bitcoin_ext::unified::UnifiedSighash`
+ --> lib/src/vtxo/policy/clause.rs:2:5
+  |
+2 | use bitcoin_ext::unified::UnifiedSighash;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `bitcoin_ext::unified::UnifiedSighash`
+  --> lib/src/vtxo/policy/mod.rs:29:5
+   |
+29 | use bitcoin_ext::unified::UnifiedSighash;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `output`
+   --> lib/src/arkoor/mod.rs:434:7
+    |
+434 |         let output = &self.outputs[output_idx];
+    |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_output`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: `ark-lib` (lib) generated 3 warnings (run `cargo fix --lib -p ark-lib` to apply 1 suggestion)
+    Checking bark-server-rpc v0.7.1 (/home/connor/paperclip-public-covenant-wallet/server-rpc)
+warning: `ark-lib` (lib test) generated 1 warning (1 duplicate)
+    Checking bark-wallet v0.7.1 (/home/connor/paperclip-public-covenant-wallet/bark)
+warning: methods `select_any_vtxos_to_cover` and `select_any_vtxos_to_cover_with_fee` are never used
+    --> bark/src/lib.rs:2349:11
+     |
+ 969 | impl Wallet {
+     | ----------- methods in this implementation
+...
+2349 |     async fn select_any_vtxos_to_cover(
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+2360 |     async fn select_any_vtxos_to_cover_with_fee<F>(
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` on by default
+
+warning: function `resolve_change_pieces` is never used
+  --> bark/src/arkoor.rs:82:15
+   |
+82 | pub(crate) fn resolve_change_pieces(
+   |               ^^^^^^^^^^^^^^^^^^^^^
+
+warning: `bark-wallet` (lib) generated 2 warnings
+    Checking bark-json v0.7.1 (/home/connor/paperclip-public-covenant-wallet/bark-json)
+warning: unused import: `ExitStateKind`
+  --> bark-json/src/cli/mod.rs:25:30
+   |
+25 | use crate::exit::{ExitState, ExitStateKind};
+   |                              ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `VtxoStateInfo`
+  --> bark-json/src/cli/mod.rs:26:42
+   |
+26 | use crate::primitives::{TransactionInfo, VtxoStateInfo, WalletVtxoInfo};
+   |                                          ^^^^^^^^^^^^^
+
+warning: `bark-wallet` (lib test) generated 1 warning (1 duplicate)
+warning: `bark-json` (lib) generated 2 warnings (run `cargo fix --lib -p bark-json` to apply 2 suggestions)
+    Checking bark-rest v0.7.1 (/home/connor/paperclip-public-covenant-wallet/bark-rest)
+warning: `bark-json` (lib test) generated 2 warnings (2 duplicates)
+    Checking bark-cli v0.7.1 (/home/connor/paperclip-public-covenant-wallet/bark-cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 13.69s
+WALLET_CHECKS_EXIT=0

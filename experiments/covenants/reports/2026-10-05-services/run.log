@@ -1,0 +1,44 @@
+2026-10-05T23:48:32.925361+00:00 Waiting: dedicated reserve confirmation
+2026-10-05T23:49:20.788556+00:00 Waiting: dedicated reserve confirmation
+2026-10-05T23:49:35.665836+00:00 Waiting: original funding confirmation
+2026-10-05T23:50:23.560230+00:00 Waiting: original funding confirmation
+2026-10-05T23:50:33.620025+00:00 Waiting: two autonomous offline refresh rounds
+2026-10-05T23:51:19.368208+00:00 Waiting: two autonomous offline refresh rounds
+2026-10-05T23:52:05.162822+00:00 Waiting: two autonomous offline refresh rounds
+2026-10-05T23:52:50.945344+00:00 Waiting: two autonomous offline refresh rounds
+2026-10-05T23:53:36.765970+00:00 Waiting: two autonomous offline refresh rounds
+2026-10-05T23:54:22.795476+00:00 Waiting: two autonomous offline refresh rounds
+2026-10-05T23:55:09.348880+00:00 Waiting: two autonomous offline refresh rounds
+2026-10-05T23:55:37.374434+00:00 PASS: two native service processes: ASP independently funds both preauthorized refreshes; watchman remains idle before stale exit
+2026-10-05T23:55:37.569045+00:00 Waiting: watchman stale-exit refunds
+2026-10-05T23:56:23.502206+00:00 Waiting: watchman stale-exit refunds
+2026-10-05T23:56:37.132822+00:00 PASS: watchman autonomously observes and settles stale exit through both permits while wallet remains offline
+2026-10-05T23:56:57.303009+00:00 PASS: both services restart from their journal without issuing duplicate transactions
+2026-10-05T23:56:58.161421+00:00 Stopped: Remote command failed: An error occurred: Invalid experimental request; no signing result produced
+
+2026-10-05T23:59:17.282642+00:00 PASS: reconciled confirmed refund; wallet signs a unified recovery to an explicitly supported destination
+2026-10-05T23:59:17.535105+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:00:05.668090+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:00:50.675405+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:01:38.570705+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:02:26.317938+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:03:14.267982+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:04:02.374557+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:04:50.493852+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:05:38.393013+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:06:26.251509+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:07:14.222129+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:08:02.192183+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:08:50.085382+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:09:37.834930+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:10:25.808496+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:11:13.790686+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:12:01.371444+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:12:49.031978+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:13:36.711612+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:14:24.481341+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:15:12.292454+00:00 Waiting: natural public blocks reaching user recovery timelock
+2026-10-06T00:15:38.525188+00:00 Waiting: final user recovery confirmation
+2026-10-06T00:16:26.245236+00:00 Waiting: final user recovery confirmation
+2026-10-06T00:16:35.764465+00:00 PASS: timelocked wallet exit confirms with ASP and watchman stopped, using natural public signet blocks
+2026-10-06T00:16:36.253229+00:00 PASS: existing signet, miner, and mainnet fallback services were never restarted

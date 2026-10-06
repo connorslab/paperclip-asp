@@ -1,0 +1,43 @@
+{
+  "network": "private-regtest",
+  "checks": [
+    "mainnet guard, invalid permit rejection, and idempotent enrollment",
+    "funding crash replay and concurrent scheduler deduplication",
+    "two independently scheduled refreshes while wallet is offline; watchman waits for stale exit",
+    "watchman detects stale exit and completes both refunds with ASP stopped; crash replay preserves signatures",
+    "reorg reconfirmation does not issue replacement funding or refunds",
+    "wallet recovers latest allocation after timelock with both services stopped"
+  ],
+  "transactions": [
+    {
+      "kind": "recovery",
+      "txid": "5a177435e69a323ef08fe56855d91fc825e8fd7b005943dd358461d2b9b303c0"
+    },
+    {
+      "kind": "funding_hex",
+      "txid": "e146853c6cd0bae2b39c97d1ec89be4fc7558b8012b281d4608693d6838d651c"
+    },
+    {
+      "kind": "unroll_hex",
+      "txid": "4942c376a260e28441ae5d4467f6606f2c569a1add89242c57d09173f3e46ce2"
+    },
+    {
+      "kind": "refund_hex",
+      "txid": "b341528fa9112f41ab97afca553e09ad8ff38a97d7dd18b891fbf58574b0d8a9"
+    },
+    {
+      "kind": "funding_hex",
+      "txid": "360b812857bfa5496c547fbe08290a40493bf03a59d61b7f2811b48f89f4790f"
+    },
+    {
+      "kind": "unroll_hex",
+      "txid": "ecb7db5b6462dd0d5390007750b60f43f1bbd0df7afead001e6feff7c8a6de1a"
+    },
+    {
+      "kind": "refund_hex",
+      "txid": "3b11fb084fced8f13c21dfc4c7df77930b0261887acb63056bda2868986cb0b0"
+    }
+  ],
+  "txindex": {},
+  "passed": true
+}

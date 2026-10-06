@@ -1,0 +1,199 @@
+{
+  "network": "private-regtest",
+  "probes": [
+    {
+      "mode": "csfs-witness",
+      "message_bytes": 32,
+      "result": {
+        "txid": "95ad76e41290b8fcc67f677d12746affdfdaee6fb0b9cfe3192e0bac5908d26b",
+        "wtxid": "be6f10430f0be690ab5627803b8f625c39c7720ebe7621e961df24ab2e22972b",
+        "usage": 752,
+        "allowed": true,
+        "vsize": 137,
+        "fees": {
+          "base": "0.00001000",
+          "effective-feerate": "0.00007299",
+          "effective-includes": [
+            "be6f10430f0be690ab5627803b8f625c39c7720ebe7621e961df24ab2e22972b"
+          ]
+        }
+      }
+    },
+    {
+      "mode": "csfs-witness",
+      "message_bytes": 80,
+      "result": {
+        "txid": "f82c19bdb7c173ef781096969d1ad8e46345a536356120da514b8e7cd812ab3a",
+        "wtxid": "529205f3aa1a472dfe99ca5e18119d3b3bb6f084bac6fbb7eefbc32459bfdc3a",
+        "usage": 800,
+        "allowed": true,
+        "vsize": 149,
+        "fees": {
+          "base": "0.00001000",
+          "effective-feerate": "0.00006711",
+          "effective-includes": [
+            "529205f3aa1a472dfe99ca5e18119d3b3bb6f084bac6fbb7eefbc32459bfdc3a"
+          ]
+        }
+      }
+    },
+    {
+      "mode": "csfs-witness",
+      "message_bytes": 81,
+      "result": {
+        "txid": "e98f1e15be6465d75cd1603c02637e3086454dc4a85bc43e8e013f60be04d3b1",
+        "wtxid": "21d0d0a616a5f7130502f41890818df47961b013da68a1af482b3493251cc890",
+        "usage": 816,
+        "allowed": false,
+        "reject-reason": "bad-witness-taproot-stackitem-size",
+        "reject-details": "bad-witness-taproot-stackitem-size"
+      }
+    },
+    {
+      "mode": "csfs-script",
+      "message_bytes": 80,
+      "result": {
+        "txid": "d18c26d23896a79392fc9c425b5599eb086596eba97c947119fba04115ac8e2f",
+        "wtxid": "dc241d0d29fb2884de8357f90b12f76e78881640a42cbe57374e8c69f0c7d1dc",
+        "usage": 768,
+        "allowed": true,
+        "vsize": 149,
+        "fees": {
+          "base": "0.00001000",
+          "effective-feerate": "0.00006711",
+          "effective-includes": [
+            "dc241d0d29fb2884de8357f90b12f76e78881640a42cbe57374e8c69f0c7d1dc"
+          ]
+        }
+      }
+    },
+    {
+      "mode": "csfs-script",
+      "message_bytes": 256,
+      "result": {
+        "txid": "1586f3bcd3702e940bfe7e246f2938d362cde146b4cbff6071882070197eced0",
+        "wtxid": "f6655782200aa19ac871012b55ab673d03929747ddc7e4bbd592505031ac62b5",
+        "usage": 944,
+        "allowed": true,
+        "vsize": 194,
+        "fees": {
+          "base": "0.00001000",
+          "effective-feerate": "0.00005154",
+          "effective-includes": [
+            "f6655782200aa19ac871012b55ab673d03929747ddc7e4bbd592505031ac62b5"
+          ]
+        }
+      }
+    },
+    {
+      "mode": "csfs-script",
+      "message_bytes": 257,
+      "result": {
+        "txid": "ee58b55b65b2688cca5963abb23a9066bb3e8803440b8c2c297dbefa3533f56f",
+        "wtxid": "53d8b9ee260d6e388dcf7978c29c231b95cd2867fd86d37dc85f403d55c21afb",
+        "usage": 944,
+        "allowed": false,
+        "reject-reason": "mempool-script-verify-flag-failed (Push value size limit exceeded)",
+        "reject-details": "mempool-script-verify-flag-failed (Push value size limit exceeded), input 0 of ee58b55b65b2688cca5963abb23a9066bb3e8803440b8c2c297dbefa3533f56f (wtxid 53d8b9ee260d6e388dcf7978c29c231b95cd2867fd86d37dc85f403d55c21afb), spending 1b093492d07d98efd2164cf738342a8cde6daa1892ed61ded4c096399c4794f5:1"
+      }
+    },
+    {
+      "mode": "sha256-witness",
+      "message_bytes": 32,
+      "result": {
+        "txid": "c2fa7ca2a080727a8a6d3bb26e8a4d52e68128be2f0914e0b763170519a771c1",
+        "wtxid": "a5d74e12a28ed139b1cb21993f8bde0d6dd5a9ae4ba9d446642b08005e0ddc9b",
+        "usage": 656,
+        "allowed": true,
+        "vsize": 121,
+        "fees": {
+          "base": "0.00001000",
+          "effective-feerate": "0.00008264",
+          "effective-includes": [
+            "a5d74e12a28ed139b1cb21993f8bde0d6dd5a9ae4ba9d446642b08005e0ddc9b"
+          ]
+        }
+      }
+    },
+    {
+      "mode": "sha256-witness",
+      "message_bytes": 80,
+      "result": {
+        "txid": "cf1b9f83dfa721b338788054fe18180f4cf78de4cc1679f557e638947ac517af",
+        "wtxid": "33fdbdf80a6299c2cb9327d14f4c1d405ee894c3fd04c3b390f8822e1a1633a6",
+        "usage": 704,
+        "allowed": true,
+        "vsize": 133,
+        "fees": {
+          "base": "0.00001000",
+          "effective-feerate": "0.00007518",
+          "effective-includes": [
+            "33fdbdf80a6299c2cb9327d14f4c1d405ee894c3fd04c3b390f8822e1a1633a6"
+          ]
+        }
+      }
+    },
+    {
+      "mode": "sha256-witness",
+      "message_bytes": 81,
+      "result": {
+        "txid": "48e6f5509ff9c11e5c10c840e5b9b40c9cfaacc33edab55195fc450b5fde9398",
+        "wtxid": "a4d6034c78ded27f5b4341fc4309482ba143f57c06a4a0642c8596d4be88fc68",
+        "usage": 720,
+        "allowed": false,
+        "reject-reason": "bad-witness-taproot-stackitem-size",
+        "reject-details": "bad-witness-taproot-stackitem-size"
+      }
+    },
+    {
+      "mode": "sha256-script",
+      "message_bytes": 80,
+      "result": {
+        "txid": "c122a6607e2454647274cfb86a3b8c1e3a31c1c7315d924ebe44ecb86461837f",
+        "wtxid": "980df539b997f5251efcaf7c6bcec43d9533b4b2c11f42ecdc06184a24006d10",
+        "usage": 656,
+        "allowed": true,
+        "vsize": 133,
+        "fees": {
+          "base": "0.00001000",
+          "effective-feerate": "0.00007518",
+          "effective-includes": [
+            "980df539b997f5251efcaf7c6bcec43d9533b4b2c11f42ecdc06184a24006d10"
+          ]
+        }
+      }
+    },
+    {
+      "mode": "sha256-script",
+      "message_bytes": 256,
+      "result": {
+        "txid": "9f71046492d506627d687c9fe7492288e292ca4527789613605feaab551cc821",
+        "wtxid": "3eaff06df45ff88fee6587c5b55f0985652687e41e408020cee5c11cae563992",
+        "usage": 832,
+        "allowed": true,
+        "vsize": 178,
+        "fees": {
+          "base": "0.00001000",
+          "effective-feerate": "0.00005617",
+          "effective-includes": [
+            "3eaff06df45ff88fee6587c5b55f0985652687e41e408020cee5c11cae563992"
+          ]
+        }
+      }
+    },
+    {
+      "mode": "sha256-script",
+      "message_bytes": 257,
+      "result": {
+        "txid": "19b8f23cb440fd52713b40e9229810a1898154ee99764f66856a5deea08da7c0",
+        "wtxid": "829d95f88fc4d37d1435c236d51dea0802c628714e3cc594f8156acf83523d87",
+        "usage": 832,
+        "allowed": false,
+        "reject-reason": "mempool-script-verify-flag-failed (Push value size limit exceeded)",
+        "reject-details": "mempool-script-verify-flag-failed (Push value size limit exceeded), input 0 of 19b8f23cb440fd52713b40e9229810a1898154ee99764f66856a5deea08da7c0 (wtxid 829d95f88fc4d37d1435c236d51dea0802c628714e3cc594f8156acf83523d87), spending f038d8c85a8c1bd3ce3d6fa02fc151fa9dfa42a3e8cc84446ca0f9a184486cc7:1"
+      }
+    }
+  ],
+  "scope": "default policy, small samples only",
+  "passed": true
+}

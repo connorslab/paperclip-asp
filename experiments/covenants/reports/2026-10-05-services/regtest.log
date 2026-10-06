@@ -1,0 +1,85 @@
+warning: Git tree '/home/connor/paperclip-ark-local-test/paperclip-system/paperclip-wallet' is dirty
+warning: ignoring untrusted flake configuration setting 'extra-substituters'.
+Pass '--accept-flake-config' to trust it
+warning: ignoring untrusted flake configuration setting 'extra-trusted-public-keys'.
+Pass '--accept-flake-config' to trust it
+cargo build --locked -p bark-server --features experimental-covenants --bin paperclip-asp --bin paperclip-watchman
+warning: unexpected `cfg` condition name: `fuzzing`
+  --> vendor/lightning-types/src/lib.rs:17:17
+   |
+17 | #![cfg_attr(not(fuzzing), deny(missing_docs))]
+   |                 ^^^^^^^
+   |
+   = help: expected names are: `docsrs`, `feature`, and `test` and 31 more
+   = help: consider using a Cargo feature instead
+   = help: or consider adding in `Cargo.toml` the `check-cfg` lint config for the lint:
+            [lints.rust]
+            unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+   = help: or consider adding `println!("cargo::rustc-check-cfg=cfg(fuzzing)");` to the top of the `build.rs`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: `#[warn(unexpected_cfgs)]` on by default
+
+warning: unexpected `cfg` condition name: `fuzzing`
+   --> vendor/lightning-types/src/features.rs:813:7
+    |
+813 | #[cfg(fuzzing)]
+    |       ^^^^^^^
+    |
+    = help: consider using a Cargo feature instead
+    = help: or consider adding in `Cargo.toml` the `check-cfg` lint config for the lint:
+             [lints.rust]
+             unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+    = help: or consider adding `println!("cargo::rustc-check-cfg=cfg(fuzzing)");` to the top of the `build.rs`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: unexpected `cfg` condition name: `fuzzing`
+   --> vendor/lightning-types/src/features.rs:820:11
+    |
+820 | #[cfg(not(fuzzing))]
+    |           ^^^^^^^
+    |
+    = help: consider using a Cargo feature instead
+    = help: or consider adding in `Cargo.toml` the `check-cfg` lint config for the lint:
+             [lints.rust]
+             unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+    = help: or consider adding `println!("cargo::rustc-check-cfg=cfg(fuzzing)");` to the top of the `build.rs`
+    = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+
+warning: `lightning-types` (lib) generated 3 warnings
+warning: unused import: `bitcoin_ext::unified::UnifiedSighash`
+ --> lib/src/vtxo/policy/clause.rs:2:5
+  |
+2 | use bitcoin_ext::unified::UnifiedSighash;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `bitcoin_ext::unified::UnifiedSighash`
+  --> lib/src/vtxo/policy/mod.rs:29:5
+   |
+29 | use bitcoin_ext::unified::UnifiedSighash;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `output`
+   --> lib/src/arkoor/mod.rs:434:7
+    |
+434 |         let output = &self.outputs[output_idx];
+    |             ^^^^^^ help: if this is intentional, prefix it with an underscore: `_output`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: `ark-lib` (lib) generated 3 warnings (run `cargo fix --lib -p ark-lib` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.12s
+PYTHONPATH="$COVENANT_NODE_SOURCE/test/functional" python3 experiments/covenants/test_services.py --descriptors --configfile="$COVENANT_NODE_CONFIG"
+2026-10-05T23:47:31.158000Z TestFramework (INFO): PRNG seed is: 3270563557182441442
+2026-10-05T23:47:31.159000Z TestFramework (INFO): Initializing test directory /tmp/nix-shell.rUqoiX/bitcoin_func_test_12eox0zd
+2026-10-05T23:47:31.492000Z TestFramework (INFO): mainnet guard, invalid permit rejection, and idempotent enrollment
+2026-10-05T23:47:31.754000Z TestFramework (INFO): funding crash replay and concurrent scheduler deduplication
+2026-10-05T23:47:31.965000Z TestFramework (INFO): two independently scheduled refreshes while wallet is offline; watchman waits for stale exit
+2026-10-05T23:47:32.630000Z TestFramework (INFO): watchman detects stale exit and completes both refunds with ASP stopped; crash replay preserves signatures
+2026-10-05T23:47:33.037000Z TestFramework (INFO): reorg reconfirmation does not issue replacement funding or refunds
+2026-10-05T23:47:33.080000Z TestFramework (INFO): wallet recovers latest allocation after timelock with both services stopped
+2026-10-05T23:47:33.132000Z TestFramework (INFO): Stopping nodes
+2026-10-05T23:47:33.183000Z TestFramework (INFO): Cleaning up /tmp/nix-shell.rUqoiX/bitcoin_func_test_12eox0zd on exit
+2026-10-05T23:47:33.183000Z TestFramework (INFO): Tests successful
+TEST_EXIT=0

@@ -86,6 +86,11 @@ keys in an owner-only file. Use an owner-only parent directory as well.
 
 ## Tests
 
+The [native ASP/watchman service report](reports/2026-10-05-services/REPORT.md)
+records passing private crash/reorg tests and two autonomous public-signet
+refreshes, followed by a confirmed wallet exit with both services stopped.
+It also includes the data-policy probes and the remaining integration limits.
+
 The [October 5 public signet report](reports/2026-10-05-public-signet/REPORT.md)
 records two preauthorized refreshes, the offline command interval, invalid-spend
 checks and confirmed user recovery. It includes transaction links and raw
