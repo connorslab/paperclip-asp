@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+command -v cargo >/dev/null
+command -v python3 >/dev/null
 umask 077
-: "${IN_NIX_SHELL:?Use nix develop --command bash scripts/test-pair.sh}"
 : "${PAPERCLIP_WALLET_BIN:?Set an absolute path to paperclip-wallet}"
 : "${PAPERCLIP_ASP_BIN:?Set an absolute path to paperclip-asp}"
 : "${PAPERCLIP_WATCHMAN_BIN:?Set an absolute path to paperclip-watchman}"

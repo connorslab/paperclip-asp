@@ -1,12 +1,8 @@
 ## Before You Start
 
-**Check the nix flake is loaded before writing any code.**
-
-Run `which captaind` or `echo $IN_NIX_SHELL`. If the flake isn't loaded, remind the user:
-
-> "Please restart in a shell with the nix flake loaded (`nix develop` or direnv)."
-
-Do not write code until the environment is confirmed.
+Use the native Rust toolchain and dependencies in `docs/native-testing.md`.
+Nix is optional, not a prerequisite for code changes or tests. Verify actual
+compiler and tool availability rather than the `IN_NIX_SHELL` variable.
 
 ## Skills
 

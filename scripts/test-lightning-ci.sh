@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Disposable, loopback-only regtest. Never load an operator configuration.
 set -euo pipefail
+command -v cargo >/dev/null
+command -v python3 >/dev/null
 umask 077
-: "${IN_NIX_SHELL:?Use the pinned build shell}"
 root=$(cd "$(dirname "$0")/.." && pwd)
 deps="$root/.state/ln-failure-deps"
 mkdir -p "$deps/plugins"

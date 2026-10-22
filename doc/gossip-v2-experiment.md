@@ -55,7 +55,7 @@ committed tree. Verify each construction before it becomes eligible for a proof.
 
 ## Required validation
 
-Use `nix develop` and the repository test commands before implementation commits.
+Use the native toolchain in `docs/native-testing.md` and the repository test commands.
 Test two-endpoint and multi-endpoint vectors; malformed points, lengths and TLVs;
 unknown proof types; wrong chains and outpoints; script-root mismatch; expired or
 spent outputs; reorgs; shared-capacity contention; partial signature sessions;
@@ -66,8 +66,8 @@ format with a matching independent Lightning implementation on an isolated
 network. No customer invoices, production keys or real payments belong in this
 experiment. Unit tests alone cannot establish routing interoperability.
 
-## Current blocker
+## Implementation status
 
-No repository Nix development shell was available in the inspected local Windows
-environment or Ark host. The repository instructions prohibit code changes until
-that environment is confirmed. No implementation or compatibility test has run.
+The native CI path replaces the former mandatory Nix shell. This branch still
+contains no gossip v2 implementation. Protocol and interoperability tests above
+remain required before any claim of routing support.

@@ -32,8 +32,10 @@ See [receive recovery time](LIGHTNING.md#receive-recovery-time) and
 
 ## Build
 
+Install the dependencies in [native testing](docs/native-testing.md). Nix is optional.
+
 ```sh
-nix develop --command bash scripts/build.sh
+bash scripts/build.sh
 ./target/debug/paperclip-asp --help
 ```
 
@@ -50,7 +52,7 @@ export PAPERCLIP_WALLET_BIN=/absolute/path/to/paperclip-wallet
 export PAPERCLIP_ASP_BIN=/absolute/path/to/paperclip-asp
 export PAPERCLIP_WATCHMAN_BIN=/absolute/path/to/paperclip-watchman
 export XBT_BITCOIND=/absolute/path/to/verified/knots/bin/bitcoind
-nix develop --command bash scripts/test-pair.sh
+bash scripts/test-pair.sh
 ```
 
 This runs the actual deposit, refresh, transfer, cooperative withdrawal and

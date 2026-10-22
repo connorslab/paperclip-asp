@@ -73,7 +73,6 @@ def main():
         if args.stop: (STATE / 'stop').touch(); return
         if not 1 <= args.mine <= 500: raise ValueError('Choose 1–500 blocks')
         print(json.dumps(mine(args.mine))); return
-    if not os.environ.get('IN_NIX_SHELL'): raise RuntimeError('Run inside nix develop')
     for key in list(os.environ):
         if key.startswith(('BARK_', 'BARKD_')):
             del os.environ[key]

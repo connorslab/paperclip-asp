@@ -1,4 +1,4 @@
-name: XBT stack build
+name: Native experimental stack tests
 on:
   workflow_dispatch:
 permissions:
@@ -14,19 +14,32 @@ jobs:
       CARGO_PROFILE_TEST_DEBUG: 0
     steps:
       - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v31
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev cmake pkg-config protobuf-compiler libssl-dev libsqlite3-dev libpq-dev
+          rustup toolchain install 1.90.0 --profile minimal
+          cargo install just --version 1.40.0 --locked
+          rustc --version
+          protoc --version
+      - name: Check workspace
+        run: just checks
+      - name: Test shared libraries
+        run: just unit
+      - name: Test server library
+        run: just unit-server
       - name: Check pinned shared protocol sources
         run: sha256sum -c SHARED-SOURCE.sha256
       - name: Build Paperclip
-        run: nix develop --command bash scripts/build.sh
+        run: bash scripts/build.sh
       - name: Check unified signatures
-        run: nix develop --command cargo test --locked -p bark-bitcoin-ext unified
+        run: cargo test --locked -p bark-bitcoin-ext unified
       - name: Check versioned recovery compatibility
-        run: nix develop --command just unit standard_v2
+        run: just unit standard_v2
       - name: Check XBT Lightning backend admission
-        run: nix develop --command just unit-server xbt_backend
+        run: just unit-server xbt_backend
       - name: Check receive pool recovery eligibility
-        run: nix develop --command just unit-server vtxopool
+        run: just unit-server vtxopool
       - name: Check private platform configuration
         run: |
           python3 deployment/test_config.py
