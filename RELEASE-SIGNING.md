@@ -8,7 +8,7 @@ Paperclip uses one OpenPGP release identity across its repositories and packages
 - Current expiry: October 6, 2028
 - Public key: [paperclip-release-signing-key.asc](paperclip-release-signing-key.asc)
 
-This policy applies to Paperclip releases, including beta and Sideflash packages.
+This policy applies to Paperclip releases, including beta packages.
 It does not authenticate upstream releases or imply that older downloads have
 signatures. A release is GPG-signed only when its verified checksum manifest has
 a valid signature from this identity.
