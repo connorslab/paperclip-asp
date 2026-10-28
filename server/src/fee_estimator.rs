@@ -249,13 +249,7 @@ impl Process {
 	}
 
 	async fn update_fee_rates(&self) {
-		let (rates, using_fallback) = match self.fetch_fee_rates().await {
-			Ok(rates) => (rates, false),
-			Err(e) => {
-				slog!(FeeEstimateFallback, err: e.to_string());
-				(self.config.fallback_fee_rates(), true)
-			}
-		};
+		let (rates, using_fallback) = self.fetch_fee_rates().await;
 
 		// grab the latest and then update
 		let latest = self.fee_estimator.fee_rates.read().front().map(|(v, _)| v).cloned()
@@ -290,7 +284,7 @@ impl Process {
 		}
 	}
 
-	async fn fetch_fee_rates(&self) -> anyhow::Result<OnchainFeeRates> {
+	async fn fetch_fee_rates(&self) -> (OnchainFeeRates, bool) {
 		let get_fee_rate = async |target: u16| -> anyhow::Result<FeeRate> {
 			let fee: rpc::json::EstimateSmartFeeResult = self.bitcoind.call_raw(
 				"estimatesmartfee",
@@ -299,7 +293,7 @@ impl Process {
 					bcd::json_arg(rpc::json::EstimateMode::Economical)?,
 				],
 			).await?;
-			if let Some(fee_rate) = fee.fee_rate {
+			if let Some(fee_rate) = fee.fee_rate.filter(|rate| *rate > bitcoin::Amount::ZERO) {
 				Ok(FeeRate::from_amount_per_kvb_ceil(fee_rate))
 			} else {
 				Err(anyhow!(
@@ -309,12 +303,28 @@ impl Process {
 			}
 		};
 
-		Ok(OnchainFeeRates {
-			fast: get_fee_rate(FEE_RATE_TARGET_CONF_FAST).await?,
-			regular: get_fee_rate(FEE_RATE_TARGET_CONF_REGULAR).await?,
-			slow: get_fee_rate(FEE_RATE_TARGET_CONF_SLOW).await?,
-		})
+		let fast = get_fee_rate(FEE_RATE_TARGET_CONF_FAST).await;
+		let regular = get_fee_rate(FEE_RATE_TARGET_CONF_REGULAR).await;
+		let slow = get_fee_rate(FEE_RATE_TARGET_CONF_SLOW).await;
+		for result in [&fast, &regular, &slow] {
+			if let Err(e) = result { slog!(FeeEstimateFallback, err: e.to_string()); }
+		}
+		select_rates(fast.ok(), regular.ok(), slow.ok(), self.config.fallback_fee_rates())
 	}
+}
+
+/// Fall back per target; never lower a successful estimate to make rates ordered.
+fn select_rates(
+	fast: Option<FeeRate>, regular: Option<FeeRate>, slow: Option<FeeRate>, fallback: OnchainFeeRates,
+) -> (OnchainFeeRates, bool) {
+	let valid = |r: Option<FeeRate>| r.filter(|v| *v > FeeRate::ZERO);
+	let (fast, regular, slow) = (valid(fast), valid(regular), valid(slow));
+	let used_fallback = fast.is_none() || regular.is_none() || slow.is_none();
+	let floor = FeeRate::from_sat_per_kwu(250);
+	let slow = slow.unwrap_or(fallback.slow).max(floor);
+	let regular = regular.unwrap_or(fallback.regular).max(slow);
+	let fast = fast.unwrap_or(fallback.fast).max(regular);
+	(OnchainFeeRates { fast, regular, slow }, used_fallback)
 }
 
 /// Starts the fee estimator background process.
@@ -356,6 +366,25 @@ mod test {
 			Duration::from_secs(3600),
 			None,
 		)
+	}
+
+	#[test]
+	fn partial_fallback_preserves_available_estimates() {
+		let fallback = OnchainFeeRates { fast: rate(25), regular: rate(10), slow: rate(4) };
+		let (rates, used) = select_rates(None, Some(rate(2)), Some(rate(1)), fallback);
+		assert!(used);
+		assert_eq!(rates, OnchainFeeRates { fast: rate(25), regular: rate(2), slow: rate(1) });
+		let (rates, used) = select_rates(Some(rate(30)), None, Some(rate(12)), fallback);
+		assert!(used);
+		assert_eq!(rates, OnchainFeeRates { fast: rate(30), regular: rate(12), slow: rate(12) });
+	}
+
+	#[test]
+	fn fallback_handles_total_failure_and_invalid_zero() {
+		let fallback = OnchainFeeRates { fast: rate(25), regular: rate(10), slow: rate(4) };
+		assert_eq!(select_rates(None, None, None, fallback), (fallback, true));
+		assert_eq!(select_rates(Some(FeeRate::ZERO), None, None, fallback), (fallback, true));
+		assert_eq!(select_rates(Some(rate(3)), Some(rate(2)), Some(rate(1)), fallback).1, false);
 	}
 
 	#[test]

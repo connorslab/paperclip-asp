@@ -125,10 +125,10 @@ async fn xbt_lifecycle_small_anchor_legacy_recipient() {
 	alice.send_oor(&bob.address().await, sat(100_000)).await;
 	assert_eq!(alice.spendable_balance().await, sat(394_010));
 	assert_eq!(bob.spendable_balance().await, sat(100_000));
-	// The old sender retains its original 6,000-sat budget, while spending
+	// The pre-capability sender retains its 3,990-sat budget, while spending
 	// an input with both old and small-anchor recovery transactions.
 	bob.send_oor(&alice.address().await, sat(20_000)).await;
-	assert_eq!(bob.spendable_balance().await, sat(74_000));
+	assert_eq!(bob.spendable_balance().await, sat(76_010));
 	assert_eq!(alice.spendable_balance().await, sat(414_010));
 	srv.stop().await.unwrap();
 	bob.start_exit_all().await;
@@ -233,4 +233,65 @@ async fn xbt_lifecycle_watchman_protects_refreshed_and_withdrawn_funds() {
 		assert!(points.iter().all(|p| client.get_tx_out(&p.txid, p.vout, Some(true)).unwrap().is_none()),
 			"ASP failed to confiscate a stale exit after {mode}");
 	}
+}
+
+#[tokio::test]
+async fn xbt_economical_legacy_recipient() {
+	let old_exec = std::env::var("PAPERCLIP_OLD_WALLET_BIN")
+		.expect("Set an independently built pre-capability wallet for compatibility testing");
+	let ctx = TestContext::new("xbt/economical_legacy").await;
+	let srv = ctx.captaind("server").no_vtxo_pool().cfg(|cfg| { cfg.experimental_economical_transfers = true; }).funded(btc(2)).create().await;
+	let alice = ctx.bark("new", &srv).funded(sat(1_000_000)).create().await;
+	let bob = ctx.bark("old", &srv).exec(old_exec).create().await;
+	alice.board_and_confirm_and_register(&ctx, sat(500_000)).await;
+	alice.send_oor(&bob.address().await, sat(100_000)).await;
+	assert_eq!(alice.spendable_balance().await, sat(396_416));
+	assert_eq!(bob.spendable_balance().await, sat(100_000));
+	// The pre-capability sender retains its 3,990-sat budget, while spending
+	// an input with both old and small-anchor recovery transactions.
+	bob.send_oor(&alice.address().await, sat(20_000)).await;
+	assert_eq!(bob.spendable_balance().await, sat(76_010));
+	assert_eq!(alice.spendable_balance().await, sat(416_416));
+	srv.stop().await.unwrap();
+	bob.start_exit_all().await;
+	complete_exit(&ctx, &bob).await;
+	bob.claim_all_exits(bob.get_onchain_address().await).await;
+	ctx.generate_blocks(1).await;
+	assert!(bob.onchain_balance().await > sat(72_000));
+}
+
+
+#[tokio::test]
+async fn xbt_economical_fee_bump_with_server_offline() {
+    let ctx = TestContext::new("xbt/economical_fee_bump").await;
+    let srv = ctx.captaind("server").no_vtxo_pool()
+        .cfg(|cfg| cfg.experimental_economical_transfers = true)
+        .funded(btc(2)).create().await;
+    let alice = ctx.bark("sender", &srv).funded(sat(1_000_000)).create().await;
+    let bob = ctx.bark("recipient", &srv).cfg(|cfg| {
+        cfg.fallback_fee_rate = Some(bitcoin::FeeRate::from_sat_per_vb_u32(20));
+    }).funded(sat(100_000)).create().await;
+    alice.board_and_confirm_and_register(&ctx, sat(500_000)).await;
+    alice.send_oor(&bob.address().await, sat(100_000)).await;
+    let received = bob.raw_vtxo(bob.vtxo_ids().await[0]).await;
+    let recovery_ids = received.transactions().map(|step| step.tx.compute_txid()).collect::<Vec<_>>();
+    srv.stop().await.unwrap();
+    bob.start_exit_all().await;
+    bob.progress_exit().await;
+    let client = ctx.bitcoind().sync_client();
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            bob.progress_exit().await;
+            let mempool = client.get_raw_mempool().unwrap();
+            if mempool.iter().any(|id| {
+                let tx = client.get_raw_transaction(id, None).unwrap();
+                !recovery_ids.contains(id) && tx.input.iter().any(|input| recovery_ids.contains(&input.previous_output.txid))
+            }) { break; }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }).await.expect("higher-fee recovery did not create a child transaction");
+    complete_exit(&ctx, &bob).await;
+    bob.claim_all_exits(bob.get_onchain_address().await).await;
+    ctx.generate_blocks(1).await;
+    assert!(bob.onchain_balance().await > sat(150_000), "recovery fees unexpectedly consumed most funds");
 }

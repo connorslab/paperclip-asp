@@ -64,7 +64,9 @@ impl Server {
 				&& request.outputs.iter().all(|o| matches!(&o.policy, VtxoPolicy::Pubkey(_)))
 				&& request.isolated_outputs.is_empty();
 			ensure!(request.exit_funding == Some(ark::exit_policy::paperclip_funding())
-				|| (ordinary && request.exit_funding == Some(ark::exit_policy::small_anchor_transfer_funding())),
+				|| (ordinary && request.exit_funding == Some(ark::exit_policy::small_anchor_transfer_funding()))
+				|| (ordinary && self.config.experimental_economical_transfers
+					&& request.exit_funding == Some(ark::exit_policy::economical_transfer_funding())),
 				"funded recovery profile required");
 		}
 		// then we create the builder

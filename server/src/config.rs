@@ -317,6 +317,9 @@ pub struct Config {
 	/// Enable wallet-owned reusable BOLT12 receive sessions.
 	#[serde(default)]
 	pub experimental_bolt12_receive: bool,
+	/// Candidate lower reserve for ordinary transfers; legacy requests remain valid.
+	#[serde(default)]
+	pub experimental_economical_transfers: bool,
 	#[serde(with = "utils::serde::duration")]
 	pub cln_reconnect_interval: Duration,
 	#[serde(with = "utils::serde::duration")]

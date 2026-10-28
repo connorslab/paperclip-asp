@@ -22,6 +22,17 @@ The current release adds reusable BOLT12 receiving and a configurable
 cancellation, restart, failure recovery, and old-wallet compatibility passed XBT
 regtest tests. Live mainnet checks verified offer/invoice exchange without payment.
 
+## 0.9.0: smaller ordinary-transfer recovery allocations
+
+Enable `experimental_economical_transfers` to advertise the compatible ordinary
+transfer profile. A single input allocates 1,056 sats without change or 1,584 sats
+with change, about 60% below 0.8.3. Existing signed histories remain unchanged;
+legacy clients continue to use their supported profile. Lightning and tree
+recovery budgets are unchanged. P2A is not enabled in this release.
+
+Fee estimates fall back independently per target, keep a minimum of 1 sat/vB,
+and preserve slow/regular/fast ordering. See [fee validation](docs/fees-0.9.0.md).
+
 ## Current maintenance fixes
 
 The source includes receive-pool recovery-time selection, earlier pool

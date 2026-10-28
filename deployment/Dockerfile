@@ -1,5 +1,5 @@
 # Source build for each native architecture; do not copy Nix-linked binaries into Debian.
-FROM rust:1.90.0-bookworm AS build
+FROM rust:1.91.0-bookworm AS build
 RUN apt-get update && apt-get install -y --no-install-recommends clang libclang-dev cmake pkg-config protobuf-compiler libssl-dev libsqlite3-dev libpq-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 ENV CARGO_BUILD_JOBS=2
